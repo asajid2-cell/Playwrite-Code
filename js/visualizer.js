@@ -1316,6 +1316,7 @@ function createJukeboxDriver(player, options) {
     var jumpCooldown = 0;
     var MIN_INDEX_GAP = 3;
     var recentHistory = [];
+    var noJumpStreakSec = 0;
     var initialBeats = masterQs ? masterQs.length : 0;
     var HISTORY_LIMIT = initialBeats ? Math.max(12, Math.floor(initialBeats * 0.04)) : 12;
     var HISTORY_GAP = initialBeats ? Math.max(6, Math.floor(initialBeats * 0.015)) : 6;
@@ -1323,6 +1324,7 @@ function createJukeboxDriver(player, options) {
     var warmupBeats = warmupBeatsOption || 0;
     var warmupCountdown = 0;
     var modeName = options.modeName || "jukebox";
+    var FORCE_JUMP_THRESHOLD_SEC = (typeof trackDuration === 'number' && !isNaN(trackDuration)) ? trackDuration * 0.15 : 12;
 
     function resetWarmup() {
         if (warmupBeatsOption !== null) {
@@ -1422,6 +1424,12 @@ function createJukeboxDriver(player, options) {
         if (candidateIndex === null) {
             return sequential;
         }
+        // Force a jump if we've gone too long without one
+        if (noJumpStreakSec >= FORCE_JUMP_THRESHOLD_SEC) {
+            noJumpStreakSec = 0;
+            jumpCooldown = 2;
+            return candidateIndex;
+        }
         var probability = baseJumpProbability;
         if (q.goodNeighbors && q.goodNeighbors.length > 0) {
             var bestDistance = q.goodNeighbors[0].distance;
@@ -1455,6 +1463,16 @@ function createJukeboxDriver(player, options) {
         var nextIndex = chooseNext(q);
         if (nextIndex < 0 || nextIndex >= masterQs.length) {
             nextIndex = 0;
+        }
+        // Update "no jump" streak time based on whether we jumped
+        var sequential = q.next ? q.next.which : 0;
+        if (sequential >= masterQs.length) { sequential = 0; }
+        var didJump = (nextIndex !== sequential);
+        if (didJump) {
+            noJumpStreakSec = 0;
+        } else {
+            var inc = q && typeof q.duration === 'number' ? q.duration : delay;
+            if (!isNaN(inc) && inc > 0) { noJumpStreakSec += inc; }
         }
         currentIndex = nextIndex;
         if (delay <= 0 || isNaN(delay)) {

@@ -378,10 +378,10 @@ function setPlayingClass(modeName) {
     document.body.classList.remove("playing-canon", "playing-jukebox");
     if (modeName === "canon") {
         document.body.classList.add("playing-canon");
-        baseNoteStrength = 0.12;
+        baseNoteStrength = 0.05;
     } else if (modeName === "jukebox") {
         document.body.classList.add("playing-jukebox");
-        baseNoteStrength = 0.18;
+        baseNoteStrength = 0.08;
     } else {
         baseNoteStrength = 0;
     }

@@ -1,84 +1,103 @@
 :root {
-    --color-base: #2C0E37;
-    --color-main: #960018;
-    --color-secondary: #65000B;
+    --color-black: #050505;
+    --color-card: rgba(40, 5, 15, 0.92);
+    --color-card-soft: rgba(55, 9, 19, 0.75);
+    --color-card-highlight: rgba(150, 15, 45, 0.6);
     --color-accent: #E8B4B8;
-    --color-neutral: #F9F6F2;
-    --viz-bg: rgba(101, 0, 11, 0.58);
-    --viz-border: rgba(232, 180, 184, 0.3);
-    --viz-highlight: rgba(232, 180, 184, 0.82);
+    --color-accent-strong: #C7365F;
+    --color-text: rgba(249, 243, 244, 0.94);
+    --color-text-soft: rgba(249, 243, 244, 0.7);
     --note-strength: 0;
-    --note-alpha: 0.12;
+    --note-alpha: 0.16;
 }
 
 body {
     margin: 0;
     min-height: 100vh;
-    background:
-        radial-gradient(circle at top left, rgba(150, 0, 24, 0.28), transparent 58%),
-        radial-gradient(circle at bottom right, rgba(232, 180, 184, 0.2), transparent 66%),
-        linear-gradient(170deg, #2C0E37 0%, #471134 46%, #2C0E37 100%);
-    color: var(--color-neutral);
+    background-color: var(--color-black);
+    color: var(--color-text);
     font-family: "Manrope", system-ui, sans-serif;
     display: flex;
     flex-direction: column;
+    position: relative;
+    overflow-x: hidden;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    padding: clamp(28px, 7vw, 60px);
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg stroke='%23ffffff' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round' opacity='0.85'%3E%3Cpath d='M24 24v70'/%3E%3Cellipse cx='24' cy='108' rx='11' ry='8'/%3E%3Cpath d='M78 30c-6 4-10 12-10 18 0 14 12 24 26 24 8 0 14-5 14-12 0-8-6-12-14-12-6 0-12 5-12 12 0 6 4 10 10 10 4 0 7-2 9-5'/%3E%3Cpath d='M150 18c-10 6-16 16-16 26 0 18 16 30 32 30 10 0 18-6 18-14 0-9-6-14-16-14-8 0-14 4-14 11 0 6 5 11 11 11 5 0 8-3 10-6'/%3E%3Cpath d='M52 42l40-16v64'/%3E%3Cellipse cx='92' cy='116' rx='13' ry='9'/%3E%3Cpath d='M132 44l34-12v66'/%3E%3Cellipse cx='166' cy='120' rx='12' ry='8'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    background-repeat: repeat;
+    opacity: calc(0.08 + 0.45 * var(--note-strength));
+    transition: opacity 0.35s ease, filter 0.35s ease;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    filter: drop-shadow(0 0 calc(8px + 32px * var(--note-strength)) rgba(199, 54, 95, var(--note-alpha)));
 }
 
 .viz-header {
-    padding: 32px 0 12px;
+    padding: clamp(36px, 6vw, 64px) 0 clamp(16px, 3vw, 24px);
     text-align: center;
+    max-width: 780px;
+    margin: 0 auto;
 }
 
 .viz-header h1 {
     margin: 0;
-    font-size: clamp(2rem, 4vw, 2.8rem);
-    letter-spacing: 0.05em;
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .viz-header p {
-    margin-top: 8px;
-    color: rgba(232, 180, 184, 0.7);
+    margin-top: 10px;
+    color: var(--color-text-soft);
+    font-size: clamp(0.95rem, 1.8vw, 1.05rem);
 }
 
 .viz-container {
-    width: min(1100px, 94vw);
-    margin: 0 auto 48px;
-    background: var(--viz-bg);
-    border: 1px solid var(--viz-border);
-    border-radius: 24px;
-    backdrop-filter: blur(18px);
-    box-shadow: 0 20px 45px rgba(12, 0, 0, 0.55);
-    padding: 24px 28px 40px;
+    width: min(1120px, 94vw);
+    margin: 0 auto clamp(36px, 8vw, 72px);
+    background: linear-gradient(155deg, var(--color-card) 12%, var(--color-card-soft) 88%);
+    border: 1px solid rgba(232, 180, 184, 0.22);
+    border-radius: 28px;
+    padding: clamp(26px, 4vw, 40px) clamp(28px, 5vw, 52px) clamp(42px, 6vw, 64px);
     position: relative;
-    overflow: hidden;
+    box-shadow:
+        0 25px 60px rgba(0, 0, 0, 0.55),
+        inset 0 0 40px rgba(199, 54, 95, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
 .music-frame {
     position: relative;
     z-index: 0;
+    isolation: isolate;
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(20, 3, 9, 0.42);
+    box-shadow: inset 0 0 60px rgba(232, 180, 184, 0.08);
 }
 
 .music-frame::before {
     content: "";
     position: absolute;
-    inset: -12px;
+    inset: -40px;
+    background: radial-gradient(circle at top left, rgba(199, 54, 95, 0.18), transparent 55%),
+                radial-gradient(circle at bottom right, rgba(232, 180, 184, 0.16), transparent 60%);
+    filter: blur(36px);
+    opacity: calc(0.25 + 0.35 * var(--note-strength));
+    transition: opacity 0.35s ease;
     pointer-events: none;
-    background-image: url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%20fill%3D%22none%22%3E%3Cg%20fill%3D%22%25232C0E37%22%20fill-opacity%3D%220.4%22%3E%3Cpath%20d%3D%22M38%2028v52.5a11.5%2011.5%200%201%200%207%2010.5V54h31v26.5a11.5%2011.5%200%201%200%207%2010.5V28H38Z%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E');
-    background-size: 140px 140px;
-    background-repeat: repeat;
-    opacity: 0.12;
-    mix-blend-mode: screen;
-    transition: opacity 0.25s ease, filter 0.25s ease;
-    z-index: 0;
-    filter: drop-shadow(0 0 calc(6px + 22px * var(--note-strength)) rgba(232, 180, 184, var(--note-alpha)));
-}
-
-body.playing-canon .music-frame::before {
-    opacity: 0.2;
-}
-
-body.playing-jukebox .music-frame::before {
-    opacity: 0.22;
+    z-index: -1;
 }
 
 .viz-controls {
@@ -86,76 +105,87 @@ body.playing-jukebox .music-frame::before {
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: 18px;
+    margin-bottom: 12px;
 }
 
 .viz-controls .left {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
 }
 
 .viz-button {
-    padding: 12px 28px;
+    padding: 12px 30px;
     border-radius: 999px;
-    border: 1px solid var(--viz-highlight);
-    background: rgba(232, 180, 184, 0.12);
-    color: inherit;
-    font-size: 0.95rem;
-    letter-spacing: 0.06em;
+    border: 1px solid rgba(232, 180, 184, 0.52);
+    background: rgba(232, 180, 184, 0.16);
+    color: var(--color-text);
+    font-size: 0.92rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .viz-button:hover {
-    background: var(--viz-highlight);
-    color: var(--color-secondary);
+    background: rgba(232, 180, 184, 0.28);
+    box-shadow: 0 0 22px rgba(232, 180, 184, 0.35);
+    transform: translateY(-1px);
+}
+
+.viz-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
 }
 
 .viz-timer {
     font-variant-numeric: tabular-nums;
-    font-size: 1rem;
-    color: rgba(232, 180, 184, 0.8);
+    font-size: 1.02rem;
+    color: rgba(232, 180, 184, 0.82);
 }
 
 .viz-mode-pill {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    border: 1px solid rgba(232, 180, 184, 0.38);
+    letter-spacing: 0.1em;
+    border: 1px solid rgba(232, 180, 184, 0.32);
     border-radius: 999px;
-    padding: 6px 14px;
-    color: rgba(232, 180, 184, 0.85);
+    padding: 6px 18px;
+    color: rgba(232, 180, 184, 0.82);
+    background: rgba(232, 180, 184, 0.08);
 }
 
 .viz-status {
-    min-height: 24px;
-    font-size: 0.9rem;
-    color: rgba(232, 180, 184, 0.82);
-    margin-top: 6px;
+    min-height: 28px;
+    font-size: 0.92rem;
+    color: rgba(232, 180, 184, 0.78);
+    margin-top: 10px;
 }
 
 #error {
     display: none;
-    margin-top: 12px;
-    padding: 12px 16px;
-    border-radius: 14px;
-    border: 1px solid rgba(232, 180, 184, 0.5);
-    background: rgba(232, 180, 184, 0.12);
-    color: #2C0E37;
+    margin-top: 16px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(232, 180, 184, 0.4);
+    background: rgba(232, 180, 184, 0.1);
+    color: rgba(40, 0, 12, 0.9);
+    font-weight: 600;
 }
 
 #tiles {
-    margin-top: 32px;
+    margin-top: 36px;
 }
 
 .viz-footer {
-    padding: 24px 0 32px;
+    padding: 20px 0 36px;
     text-align: center;
-    color: rgba(232, 180, 184, 0.6);
-    font-size: 0.85rem;
+    color: rgba(232, 180, 184, 0.56);
+    font-size: 0.88rem;
+    letter-spacing: 0.08em;
 }
 
 @media (max-width: 720px) {
@@ -173,6 +203,3 @@ body.playing-jukebox .music-frame::before {
     position: relative;
     z-index: 1;
 }
-
-
-

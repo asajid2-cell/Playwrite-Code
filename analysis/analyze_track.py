@@ -614,7 +614,15 @@ def _evaluate_offsets(
                 high_similarity_ratio=float(high_ratio),
             )
         )
-    scores.sort(key=lambda s: (s.mean - 0.4 * s.std, s.high_similarity_ratio), reverse=True)
+    # Prefer offsets that align on bar boundaries (multiples of beats_per_bar)
+    def _score_key(s: OffsetScore) -> Tuple[float, float, float]:
+        bar_bonus = 0.0
+        if beats_per_bar > 0 and (s.offset % beats_per_bar) == 0:
+            bar_bonus = 0.05  # small nudge to prefer bar-aligned offsets
+        stability = s.mean - 0.4 * s.std
+        return (stability + bar_bonus, s.high_similarity_ratio, s.phase_alignment)
+
+    scores.sort(key=_score_key, reverse=True)
     return scores
 
 
@@ -710,6 +718,9 @@ def _apply_canon_candidates(
             }
         )
     return assignments, pair_similarity, coverage, segments
+
+
+    
 
 
 def _fill_unassigned_ranges(
@@ -854,10 +865,17 @@ def _compute_loop_candidates(
         return loop_edges
 
     min_similarity = float(max(-1.0, min_similarity))
+    # Always provide some candidates per beat to ensure the jukebox can jump.
+    # Prefer same-phase neighbors, skip near-adjacent indices, and cap per-beat count.
     for src in range(n_beats):
         row = ssm[src]
         indices = np.argsort(row)[::-1]
         added = 0
+        # dynamic threshold derived from the top-k neighborhood, but never blocks all
+        top_k = min(16, len(indices))
+        k_vals = [float(row[i]) for i in indices[:top_k] if i != src]
+        dyn_min = float(np.percentile(k_vals, 20)) if k_vals else -1.0
+        dyn_min = max(dyn_min, float(min_similarity))
         for dst in indices:
             if dst == src:
                 continue
@@ -866,8 +884,9 @@ def _compute_loop_candidates(
             if contexts[src].phase != contexts[dst].phase:
                 continue
             sim = float(row[dst])
-            if sim < min_similarity:
-                break
+            if sim < dyn_min and added >= max(2, max_neighbors // 2):
+                # allow a couple of edges even if below dyn_min to avoid starvation
+                continue
             loop_edges.append(
                 {
                     "source": int(src),
@@ -966,7 +985,13 @@ def compute_canon_alignment(
         }
 
     top = offsets[:top_candidates]
+    # Prefer a default offset that aligns on bar boundaries if available among top
     default_offset = top[0].offset
+    if any((s.offset % beats_per_bar) == 0 for s in top) and beats_per_bar > 0:
+        bar_aligned = [s for s in top if (s.offset % beats_per_bar) == 0]
+        if bar_aligned:
+            # choose the strongest among bar-aligned
+            default_offset = bar_aligned[0].offset
 
     candidates = _collect_canon_candidates(
         ssm=ssm,
@@ -1007,6 +1032,20 @@ def compute_canon_alignment(
                 coverage[idx] = True
     coverage_ratio = float(np.mean(coverage.astype(np.float32))) if n_beats else 0.0
 
+    # Choose a recommended start beat on a bar boundary (phase==0) that maximizes similarity
+    start_index = 0
+    if n_beats:
+        candidates_idx = [i for i in range(n_beats) if contexts[i].phase == 0]
+        if not candidates_idx:
+            candidates_idx = list(range(n_beats))
+        best_i = max(
+            candidates_idx,
+            key=lambda i: float(pair_similarity[i]) if i < len(pair_similarity) else 0.0,
+        )
+        start_index = int(best_i)
+
+    # No additional injections; keep the canon alignment strictly data-driven
+
     transition_candidates: Dict[int, List[Tuple[int, float]]] = defaultdict(list)
     for idx in range(n_beats):
         dst = int(assignments[idx])
@@ -1026,6 +1065,7 @@ def compute_canon_alignment(
                     "similarity": float(sim),
                 }
             )
+
 
     # Provide legacy run data for the primary offset
     diag = np.diag(ssm, k=default_offset) if default_offset > 0 else np.array([])
@@ -1075,6 +1115,7 @@ def compute_canon_alignment(
         "transitions": transitions,
         "coverage": coverage_info,
         "loop_candidates": loop_candidates,
+        "start_index": int(start_index),
         "notes": {
             "candidate_count": len(candidates),
             "primary_segments": len(primary_segments),

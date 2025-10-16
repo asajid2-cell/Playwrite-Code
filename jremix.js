@@ -1,6 +1,7 @@
 
 function createJRemixer(context, jquery) {
     var $ = jquery;
+    var resumePromise = null;
 
     var remixer = {
 
@@ -326,6 +327,28 @@ function createJRemixer(context, jquery) {
                 }
             }
             return player;
+        },
+
+        ensureContext: function() {
+            if (!context || typeof context.resume !== "function") {
+                return Promise.resolve();
+            }
+            if (context.state === "running" || context.state === "closed") {
+                return Promise.resolve();
+            }
+            if (!resumePromise) {
+                resumePromise = context.resume().then(function() {
+                    resumePromise = null;
+                }, function(err) {
+                    resumePromise = null;
+                    throw err;
+                });
+            }
+            return resumePromise;
+        },
+
+        getContextState: function() {
+            return context && context.state ? context.state : "unknown";
         },
 
         fetchSound : function(audioURL, callback) {

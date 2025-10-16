@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Harmonizer Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='modern.css') }}">
+</head>
+<body>
+    <header class="hero">
+        <div class="container hero-content">
+            <h1>Harmonizer Lab</h1>
+            <p>Transform any track into a canon or remix it forever with the Eternal Jukebox.</p>
+        </div>
+    </header>
+
+    <main class="container main-grid music-frame">
+        <section class="card">
+            <form id="process-form" enctype="multipart/form-data">
+                <div class="section-title">Choose your engine</div>
+                <div class="toggle-group" id="algorithm-toggle">
+                    <button type="button" data-algorithm="canon" class="toggle active">Autocanonizer</button>
+                    <button type="button" data-algorithm="jukebox" class="toggle">Eternal Jukebox</button>
+                </div>
+                <input type="hidden" name="algorithm" value="canon" id="algorithm-input">
+
+                <div class="section-title">Pick a source</div>
+                <div class="toggle-group" id="source-toggle">
+                    <button type="button" data-source="upload" class="toggle active">Upload Audio</button>
+                    <button type="button" data-source="youtube" class="toggle">YouTube</button>
+                </div>
+                <input type="hidden" name="source" value="upload" id="source-input">
+
+                <div class="source-pane" id="upload-pane">
+                    <label class="field">
+                        <span>Audio file</span>
+                        <input type="file" name="audio" accept="audio/*">
+                    </label>
+                </div>
+
+                <div class="source-pane hidden" id="youtube-pane">
+                    <label class="field">
+                        <span>YouTube link</span>
+                        <input type="url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=...">
+                    </label>
+                </div>
+
+                <div class="metadata-grid">
+                    <label class="field">
+                        <span>Track title <small>(optional)</small></span>
+                        <input type="text" name="title" placeholder="Auto-detected when possible">
+                    </label>
+                    <label class="field">
+                        <span>Artist <small>(optional)</small></span>
+                        <input type="text" name="artist" placeholder="Auto-detected when possible">
+                    </label>
+                </div>
+
+                <button type="submit" class="cta">Transform Track</button>
+            </form>
+            <div id="status-panel" class="status-panel" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card info-card">
+            <h2>How it works</h2>
+            <ol>
+                <li>Upload an audio file or supply a YouTube link.</li>
+                <li>We analyse the song locally using the rebuilt Echo Nest-style pipeline.</li>
+                <li>Launch the visualizer in either Canon or Eternal mode—right in your browser.</li>
+            </ol>
+            <p class="note">Tip: YouTube downloads require <code>ffmpeg</code> to be installed and available on your PATH for best results.</p>
+            <p class="meta">Need the CLI instead? Run <code>python analysis/analyze_track.py --help</code>.</p>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            Crafted for modern remixes · Base palette: black / oxblood / salmon pink.
+        </div>
+    </footer>
+
+    <script>
+    (function() {
+        const algorithmToggle = document.getElementById('algorithm-toggle');
+        const sourceToggle = document.getElementById('source-toggle');
+        const algorithmInput = document.getElementById('algorithm-input');
+        const sourceInput = document.getElementById('source-input');
+        const uploadPane = document.getElementById('upload-pane');
+        const youtubePane = document.getElementById('youtube-pane');
+        const form = document.getElementById('process-form');
+        const statusPanel = document.getElementById('status-panel');
+
+        algorithmToggle.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-algorithm]');
+            if (!button) {
+                return;
+            }
+            algorithmToggle.querySelectorAll('.toggle').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            algorithmInput.value = button.dataset.algorithm;
+        });
+
+        sourceToggle.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-source]');
+            if (!button) {
+                return;
+            }
+            sourceToggle.querySelectorAll('.toggle').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            const source = button.dataset.source;
+            sourceInput.value = source;
+            if (source === 'upload') {
+                uploadPane.classList.remove('hidden');
+                youtubePane.classList.add('hidden');
+            } else {
+                youtubePane.classList.remove('hidden');
+                uploadPane.classList.add('hidden');
+            }
+        });
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            statusPanel.textContent = '';
+            const source = sourceInput.value;
+            if (source === 'upload') {
+                const fileInput = form.querySelector('input[name=\"audio\"]');
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    statusPanel.textContent = 'Please choose an audio file to upload.';
+                    return;
+                }
+            } else {
+                const urlField = form.querySelector('input[name=\"youtube_url\"]');
+                if (!urlField.value) {
+                    statusPanel.textContent = 'Please paste a YouTube link.';
+                    return;
+                }
+            }
+
+            const submitButton = form.querySelector('button[type=\"submit\"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Processing…';
+            statusPanel.textContent = 'Analyzing audio – this can take a minute.';
+
+            try {
+                const formData = new FormData(form);
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Something went wrong.');
+                }
+                statusPanel.textContent = 'Ready! Redirecting to the visualizer…';
+                window.location.href = payload.redirect;
+            } catch (err) {
+                statusPanel.textContent = err.message;
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Transform Track';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

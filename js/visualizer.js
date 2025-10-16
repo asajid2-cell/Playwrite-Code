@@ -23,7 +23,6 @@ var baseNoteStrength = 0;
 var notePulseTimer = null;
 var tiles = [];
 var isTrackReady = false;
-var DEFAULT_TRACK_ID = "TRQWWGY13B03FB1D48";
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
 
@@ -514,7 +513,11 @@ function init() {
         var initialTrid = processParams();
         remixer = createJRemixer(context, $);
         driver = Driver(remixer.getPlayer());
-        fetchAnalysis(initialTrid);
+        if (initialTrid) {
+            fetchAnalysis(initialTrid);
+        } else {
+            info("Load a track to begin.");
+        }
     }
 }
 
@@ -558,7 +561,7 @@ function processParams() {
         mode = requestedMode;
     }
     var trid = params.get("trid");
-    return trid ? trid.trim() : DEFAULT_TRACK_ID;
+    return trid ? trid.trim() : null;
 }
 
 var tilePrototype = {
@@ -1061,8 +1064,9 @@ function createJukeboxDriver(player, options) {
     var jumpCooldown = 0;
     var MIN_INDEX_GAP = 3;
     var recentHistory = [];
-    var HISTORY_LIMIT = Math.max(12, Math.floor(masterQs.length ? masterQs.length * 0.04 : 12));
-    var HISTORY_GAP = 6;
+    var initialBeats = masterQs ? masterQs.length : 0;
+    var HISTORY_LIMIT = initialBeats ? Math.max(12, Math.floor(initialBeats * 0.04)) : 12;
+    var HISTORY_GAP = initialBeats ? Math.max(6, Math.floor(initialBeats * 0.015)) : 6;
     var warmupBeatsOption = Object.prototype.hasOwnProperty.call(options, "warmupBeats") ? options.warmupBeats : null;
     var warmupBeats = warmupBeatsOption || 0;
     var warmupCountdown = 0;
@@ -1261,7 +1265,7 @@ function Driver(player) {
     } else if (mode === "eternal") {
         return createJukeboxDriver(player, {
             warmupBeats: masterQs ? masterQs.length : null,
-            baseJumpProbability: 0.18,
+            baseJumpProbability: 0.12,
             modeName: "eternal"
         });
     }
@@ -1285,6 +1289,7 @@ function ga_track(page, action, id) {
 
 
 window.onload = init;
+
 
 
 

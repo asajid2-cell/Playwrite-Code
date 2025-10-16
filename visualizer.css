@@ -45,6 +45,7 @@
     overflow: hidden;
     background: rgba(20, 3, 9, 0.42);
     box-shadow: inset 0 0 60px rgba(232, 180, 184, 0.08);
+    transition: box-shadow 0.5s ease, background 0.5s ease, transform 0.5s ease;
 }
 
 .music-frame::before {
@@ -55,7 +56,7 @@
                 radial-gradient(circle at bottom right, rgba(232, 180, 184, 0.16), transparent 60%);
     filter: blur(36px);
     opacity: calc(0.25 + 0.35 * var(--note-strength));
-    transition: opacity 0.35s ease;
+    transition: opacity 0.4s ease, transform 0.5s ease;
     pointer-events: none;
     z-index: -1;
 }
@@ -128,7 +129,7 @@
 }
 
 #tiles {
-    margin-top: 36px;
+    margin-top: 24px;
 }
 
 .viz-footer {
@@ -149,4 +150,14 @@
 .music-frame > * {
     position: relative;
     z-index: 1;
+}
+
+.state-player .viz-panel.music-frame {
+    box-shadow: inset 0 0 90px rgba(232, 180, 184, 0.22), 0 40px 100px rgba(232, 180, 184, 0.22);
+    background: rgba(22, 5, 12, 0.52);
+}
+
+.state-player .viz-panel.music-frame::before {
+    opacity: calc(0.32 + 0.45 * var(--note-strength));
+    transform: scale(1.04);
 }

@@ -23,7 +23,7 @@
                 <div class="badge">Harmonizer Lab</div>
                 <h1>Canonize, Remix, Glow.</h1>
                 <p>Upload, analyze, and perform without swapping pages. The stage morphs from intake to live visualizer when your mix is ready.</p>
-                <button class="cta ghost" id="return-home">Start another track</button>
+                
             </div>
         </header>
 
@@ -131,7 +131,6 @@
         const youtubePane = document.getElementById('youtube-pane');
         const form = document.getElementById('process-form');
         const statusPanel = document.getElementById('form-status');
-        const returnHome = document.getElementById('return-home');
         const modeFromBody = body.dataset.mode || "canon";
 
         const setState = (state) => {
@@ -226,18 +225,18 @@
                 submitButton.textContent = 'Transform Track';
             }
         });
-
-        returnHome.addEventListener('click', () => {
-            if (body.classList.contains('state-player')) {
-                const url = new URL(window.location.href);
-                url.searchParams.delete('trid');
-                url.searchParams.delete('mode');
-                window.location.href = url.pathname;
-            } else {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+        // helper to clear params when browser back/forward is used
+        window.addEventListener('popstate', () => {
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('trid')) {
+                setState('state-home');
+                if (driver && typeof driver.stop === "function") {
+                    driver.stop();
+                }
             }
         });
     })();
     </script>
 </body>
 </html>
+

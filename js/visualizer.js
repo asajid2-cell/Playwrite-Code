@@ -23,6 +23,7 @@ var baseNoteStrength = 0;
 var notePulseTimer = null;
 var tiles = [];
 var isTrackReady = false;
+var serverLoopCandidateMap = {};
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
 
@@ -124,7 +125,7 @@ var yesSims = 0
 
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
-    var maxNeighbors = 8;
+    var maxNeighbors = 10;
     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
     var MIN_INDEX_SPREAD = 2;
 
@@ -160,6 +161,34 @@ function calculateNearestNeighborsForQuantum(list, q1) {
         if (totalDistance > 0) {
             neighbors.push({ beat: q2, distance: totalDistance });
         }
+    }
+
+    var serverEdges = serverLoopCandidateMap[q1.which];
+    if (serverEdges && serverEdges.length) {
+        _.each(serverEdges, function(edge) {
+            if (!edge) {
+                return;
+            }
+            var targetIdx = edge.target;
+            if (typeof targetIdx !== "number" || targetIdx < 0 || targetIdx >= list.length) {
+                return;
+            }
+            var targetBeat = list[targetIdx];
+            if (!targetBeat) {
+                return;
+            }
+            var similarity = (typeof edge.similarity === "number") ? edge.similarity : 0;
+            var normalized = Math.max(0, Math.min(1, (similarity + 1) / 2));
+            var simDistance = Math.max(4, 14 + (1 - normalized) * 140);
+            var existing = _.find(neighbors, function(entry) {
+                return entry.beat && entry.beat.which === targetBeat.which;
+            });
+            if (existing) {
+                existing.distance = Math.min(existing.distance, simDistance);
+            } else {
+                neighbors.push({ beat: targetBeat, distance: simDistance });
+            }
+        });
     }
 
     neighbors.sort(function(a, b) {
@@ -220,6 +249,39 @@ function getSection(q) {
     return sec;
 }
 
+function prepareLoopCandidates(track) {
+    serverLoopCandidateMap = {};
+    if (!track || !track.analysis) {
+        return;
+    }
+    var edges = track.analysis.loop_candidates || [];
+    if (!edges.length && track.analysis.canon_alignment && track.analysis.canon_alignment.loop_candidates) {
+        edges = track.analysis.canon_alignment.loop_candidates;
+    }
+    _.each(edges, function(edge) {
+        if (!edge) {
+            return;
+        }
+        var src = edge.source;
+        var dst = edge.target;
+        if (typeof src !== "number" || typeof dst !== "number") {
+            return;
+        }
+        if (!serverLoopCandidateMap[src]) {
+            serverLoopCandidateMap[src] = [];
+        }
+        serverLoopCandidateMap[src].push({
+            target: dst,
+            similarity: (typeof edge.similarity === "number") ? edge.similarity : 0
+        });
+    });
+    _.each(serverLoopCandidateMap, function(entries, key) {
+        serverLoopCandidateMap[key] = _.sortBy(entries, function(entry) {
+            return -entry.similarity;
+        }).slice(0, 12);
+    });
+}
+
 function findMax(dict) {
     var max = -1000000;
     var maxKey = null;
@@ -230,6 +292,189 @@ function findMax(dict) {
         }
     });
     return maxKey;
+}
+
+function applyCanonAlignment(qlist, alignment) {
+    if (!alignment || !alignment.pairs || alignment.pairs.length !== qlist.length) {
+        return false;
+    }
+    var pairs = alignment.pairs;
+    var similarity = alignment.pair_similarity || [];
+    var offset = alignment.offset || 0;
+    var segments = alignment.segments || [];
+    var coverageInfo = alignment.coverage || {};
+    var coverageRatio = (typeof coverageInfo.ratio === "number") ? coverageInfo.ratio : null;
+    var segmentMap = {};
+    _.each(segments, function(seg, segIndex) {
+        if (!seg || typeof seg.start !== "number" || typeof seg.end !== "number") {
+            return;
+        }
+        var start = Math.max(0, Math.floor(seg.start));
+        var end = Math.min(qlist.length, Math.ceil(seg.end));
+        for (var idx = start; idx < end; idx++) {
+            segmentMap[idx] = {
+                index: segIndex,
+                offset: seg.offset,
+                label: seg.label || "primary",
+                meanSimilarity: seg.mean_similarity,
+                phaseAlignment: seg.phase_alignment,
+                threshold: seg.threshold
+            };
+        }
+    });
+    var baseGainDefault = 0.4;
+    var baseGainPrimary = 0.46;
+    var baseGainFallback = 0.34;
+
+    for (var i = 0; i < qlist.length; i++) {
+        var q = qlist[i];
+        var targetIdx = pairs[i];
+        var sim = (i < similarity.length) ? similarity[i] : 0;
+        if (typeof targetIdx !== "number" || targetIdx < 0 || targetIdx >= qlist.length) {
+            targetIdx = (i + offset) % qlist.length;
+            sim = 0;
+        }
+        var safeIdx = ((targetIdx % qlist.length) + qlist.length) % qlist.length;
+        var target = qlist[safeIdx];
+        q.other = target;
+        q.otherSimilarityRaw = sim;
+        var simNorm = Math.max(0, Math.min(1, (sim + 1) / 2));
+        q.otherSimilarity = simNorm;
+        var segmentInfo = segmentMap[i] || null;
+        q.canonSegment = segmentInfo;
+        q.otherSegmentIndex = segmentInfo ? segmentInfo.index : null;
+        q.otherLabel = segmentInfo ? segmentInfo.label : null;
+        q.otherOffset = ((safeIdx - q.which) + qlist.length) % qlist.length;
+        var gainBase = baseGainDefault;
+        if (segmentInfo) {
+            if (segmentInfo.label === "primary") {
+                gainBase = baseGainPrimary;
+            } else if (segmentInfo.label === "fallback") {
+                gainBase = baseGainFallback;
+            }
+            if (typeof segmentInfo.phaseAlignment === "number") {
+                if (segmentInfo.phaseAlignment < 0.65) {
+                    gainBase *= 0.9;
+                } else if (segmentInfo.phaseAlignment > 0.88) {
+                    gainBase += 0.05;
+                }
+            }
+        }
+        if (coverageRatio !== null && coverageRatio < 0.75) {
+            gainBase *= 0.92;
+        }
+        var gain = gainBase + simNorm * 0.45;
+        q.otherGain = Math.min(1, Math.max(0.2, gain));
+    }
+    return true;
+}
+
+function augmentCanonNeighbors(qlist, alignment) {
+    if (!alignment || !alignment.transitions || !alignment.transitions.length) {
+        return;
+    }
+    var transitions = alignment.transitions;
+    var loopEdges = alignment.loop_candidates || [];
+    _.each(loopEdges, function(edge) {
+        if (!edge) {
+            return;
+        }
+        var srcIdx = edge.source;
+        var dstIdx = edge.target;
+        if (typeof srcIdx !== "number" || typeof dstIdx !== "number") {
+            return;
+        }
+        if (srcIdx < 0 || srcIdx >= qlist.length || dstIdx < 0 || dstIdx >= qlist.length) {
+            return;
+        }
+        var srcBeat = qlist[srcIdx];
+        var dstBeat = qlist[dstIdx];
+        if (!srcBeat || !dstBeat) {
+            return;
+        }
+        var simVal = (typeof edge.similarity === "number") ? edge.similarity : 0;
+        var simNorm = Math.max(0, Math.min(1, (simVal + 1) / 2));
+        var distance = Math.max(4, 12 + (1 - simNorm) * 120);
+        if (!srcBeat.neighbors) {
+            srcBeat.neighbors = [];
+        }
+        srcBeat.neighbors.push({ beat: dstBeat, distance: distance });
+        if (!srcBeat.goodNeighbors) {
+            srcBeat.goodNeighbors = [];
+        }
+        srcBeat.goodNeighbors.push({ beat: dstBeat, distance: distance });
+    });
+
+    _.each(transitions, function(tr) {
+        if (typeof tr.source !== "number" || typeof tr.target !== "number") {
+            return;
+        }
+        var srcIdx = tr.source;
+        var dstIdx = tr.target;
+        if (srcIdx < 0 || srcIdx >= qlist.length || dstIdx < 0 || dstIdx >= qlist.length) {
+            return;
+        }
+        var src = qlist[srcIdx];
+        var dst = qlist[dstIdx];
+        if (!src || !dst || src === dst) {
+            return;
+        }
+        var sim = (typeof tr.similarity === "number") ? tr.similarity : 0;
+        var simNorm = Math.max(0, Math.min(1, (sim + 1) / 2));
+        var distance = Math.max(4, 12 + (1 - simNorm) * 120);
+        if (!src.neighbors) {
+            src.neighbors = [];
+        }
+        src.neighbors.push({ beat: dst, distance: distance });
+        if (!src.goodNeighbors) {
+            src.goodNeighbors = [];
+        }
+        var duplicate = _.find(src.goodNeighbors, function(entry) {
+            return entry.beat && entry.beat.which === dst.which;
+        });
+        if (!duplicate) {
+            src.goodNeighbors.push({ beat: dst, distance: distance });
+        }
+    });
+
+    _.each(qlist, function(q) {
+        if (q.neighbors && q.neighbors.length) {
+            var neighborSeen = {};
+            var sortedNeighbors = _.sortBy(q.neighbors, function(entry) { return entry.distance; });
+            var filteredNeighbors = [];
+            for (var i = 0; i < sortedNeighbors.length && filteredNeighbors.length < 12; i++) {
+                var entry = sortedNeighbors[i];
+                if (!entry.beat) {
+                    continue;
+                }
+                var key = entry.beat.which;
+                if (neighborSeen[key]) {
+                    continue;
+                }
+                neighborSeen[key] = true;
+                filteredNeighbors.push(entry);
+            }
+            q.neighbors = filteredNeighbors;
+        }
+        if (q.goodNeighbors && q.goodNeighbors.length) {
+            var goodSeen = {};
+            var sortedGood = _.sortBy(q.goodNeighbors, function(entry) { return entry.distance; });
+            var filteredGood = [];
+            for (var j = 0; j < sortedGood.length && filteredGood.length < 8; j++) {
+                var gentry = sortedGood[j];
+                if (!gentry.beat) {
+                    continue;
+                }
+                var gkey = gentry.beat.which;
+                if (goodSeen[gkey]) {
+                    continue;
+                }
+                goodSeen[gkey] = true;
+                filteredGood.push(gentry);
+            }
+            q.goodNeighbors = filteredGood;
+        }
+    });
 }
 
 function foldBySection(qlist) {
@@ -286,6 +531,7 @@ function allReady() {
     _.each(masterQs, function(q1) {
         q1.section = getSection(q1);
     });
+    prepareLoopCandidates(curTrack);
 
     var lastBeat = masterQs[masterQs.length - 1];
     var remaining = Math.max(trackDuration - lastBeat.start, 0.1);
@@ -298,8 +544,14 @@ function allReady() {
         calculateNearestNeighborsForQuantum(masterQs, q1);
     });
 
+    var canonApplied = false;
     if (mode === "canon" || mode === "eternal") {
-        foldBySection(masterQs);
+        canonApplied = applyCanonAlignment(masterQs, curTrack.analysis.canon_alignment);
+        if (!canonApplied) {
+            foldBySection(masterQs);
+        } else {
+            augmentCanonNeighbors(masterQs, curTrack.analysis.canon_alignment);
+        }
     } else {
         _.each(masterQs, function(q) {
             q.other = q;

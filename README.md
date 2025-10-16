@@ -66,6 +66,7 @@ Every processed track is analysed via the local pipeline and stored under `data/
 - Agglomerative segmentation over MFCC + chroma features -> coarse sections.
 - Onset detection + per-frame features -> fine-grained segments with timbre, pitch class profile,
   loudness envelope, and confidence.
+- Beat-synchronous context stacking + self-similarity search -> canon alignment diagnostics (recommended offsets, per-beat partner indices).
 - Simple Krumhansl-Schmuckler key detection for `audio_summary` metadata.
 
 See `analysis/ARCHITECTURE.md` for deeper implementation notes and extension ideas.

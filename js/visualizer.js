@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 var remixer = null;
 var driver = null;
 var mode = "canon";
@@ -126,6 +126,8 @@ var yesSims = 0
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
     var maxNeighbors = 8;
+    var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
+    var MIN_INDEX_SPREAD = 2;
 
     for (var i = 0; i < list.length; i++) {
         var q2 = list[i];
@@ -144,7 +146,18 @@ function calculateNearestNeighborsForQuantum(list, q1) {
             sum += distance;
         }
         var pdistance = q1.indexInParent == q2.indexInParent ? 0 : 100;
-        var totalDistance = sum / q1.overlappingSegments.length + pdistance;
+        var baseDistance = sum / q1.overlappingSegments.length + pdistance;
+        if (!isFinite(baseDistance)) {
+            baseDistance = 1000;
+        }
+        var sectionPenalty = (q1.section !== undefined && q2.section !== undefined && q1.section !== q2.section) ? 220 : 0;
+        var timePenalty = 0;
+        if (duration > 0) {
+            var deltaTime = Math.abs(q1.start - q2.start);
+            timePenalty = (deltaTime / duration) * 90;
+        }
+        var flowPenalty = Math.max(0, (MIN_INDEX_SPREAD + 2) - Math.abs(q1.which - q2.which)) * 18;
+        var totalDistance = baseDistance + sectionPenalty + timePenalty + flowPenalty;
         if (totalDistance > 0) {
             neighbors.push({ beat: q2, distance: totalDistance });
         }
@@ -160,9 +173,19 @@ function calculateNearestNeighborsForQuantum(list, q1) {
     if (neighbors.length > 0) {
         q1.sim = neighbors[0].beat;
         q1.simDistance = neighbors[0].distance;
+        var bestDistance = neighbors[0].distance;
+        var qualityThreshold = bestDistance + 35;
+        var filtered = _.filter(neighbors, function(n) {
+            return n.distance <= qualityThreshold && n.beat && n.beat.section === q1.section;
+        });
+        if (filtered.length === 0) {
+            filtered = neighbors.slice(0, Math.min(3, neighbors.length));
+        }
+        q1.goodNeighbors = _.sortBy(filtered, function(n) { return n.distance; });
     } else {
         q1.sim = null;
         q1.simDistance = 10000000;
+        q1.goodNeighbors = [];
     }
 }
 
@@ -215,7 +238,7 @@ function foldBySection(qlist) {
     for (var section = 0; section < nSections; section++) {
         var counter = {};
         _.each(qlist, function(q) {
-            if (q.section == section && q.sim) {
+            if (q.section == section && q.sim && q.sim.section === section) {
                 var delta = q.which - q.sim.which;
                 if (!(delta in counter)) {
                     counter[delta] = 0;
@@ -227,18 +250,19 @@ function foldBySection(qlist) {
 
         _.each(qlist, function(q) {
             if (q.section == section) {
-                if (bestDelta === null || q.sim == null) {
-                    q.other = q;
-                    q.otherGain = 0;
-                    return;
-                }
-                var next = q.which - bestDelta;
-                if (next >= 0 && next < qlist.length) {
-                    q.other = qlist[next];
+                var fallback = q.next ? q.next : q;
+                if (bestDelta === null || q.sim == null || q.sim.section !== section) {
+                    q.other = fallback;
+                    q.otherGain = (fallback === q) ? 0 : 0.2;
                 } else {
-                    q.other = q;
+                    var next = q.which - bestDelta;
+                    if (next >= 0 && next < qlist.length) {
+                        q.other = qlist[next];
+                    } else {
+                        q.other = fallback;
+                    }
+                    q.otherGain = (q.other === fallback) ? 0.2 : 1;
                 }
-                q.otherGain = 1;
             }
         });
 
@@ -259,19 +283,23 @@ function foldBySection(qlist) {
 
 function allReady() {
     masterQs = curTrack.analysis.beats;
-    masterGain = (mode === "canon") ? 0.55 : 1.0;
+    masterGain = (mode === "canon") ? 0.55 : (mode === "eternal" ? 0.7 : 1.0);
     _.each(masterQs, function(q1) {
         q1.section = getSection(q1);
     });
 
     var lastBeat = masterQs[masterQs.length - 1];
-    lastBeat.duration = trackDuration - lastBeat.start;
+    var remaining = Math.max(trackDuration - lastBeat.start, 0.1);
+    var durationSamples = _.map(masterQs.slice(0, -1), function(b) { return b.duration; });
+    var medianDuration = durationSamples.length ? _.sortBy(durationSamples)[Math.floor(durationSamples.length / 2)] : remaining;
+    var cap = medianDuration ? medianDuration * 1.6 : remaining;
+    lastBeat.duration = Math.min(remaining, cap);
 
     _.each(masterQs, function(q1) {
         calculateNearestNeighborsForQuantum(masterQs, q1);
     });
 
-    if (mode === "canon") {
+    if (mode === "canon" || mode === "eternal") {
         foldBySection(masterQs);
     } else {
         _.each(masterQs, function(q) {
@@ -286,10 +314,16 @@ function allReady() {
     error("");
     setPlayingClass(mode);
     pulseNotes(baseNoteStrength);
-    $("#mode-pill").text(mode === "jukebox" ? "Eternal Jukebox" : "Autocanonizer");
+    $("#mode-pill").text(mode === "jukebox" ? "Eternal Jukebox" : (mode === "eternal" ? "Eternal Canonizer" : "Autocanonizer"));
 
     info("ready!");
-    info(mode === "jukebox" ? getFullTitle() + " - Eternal Jukebox" : getFullTitle() + " - Autocanonizer");
+    if (mode === "jukebox") {
+        info(getFullTitle() + " - Eternal Jukebox");
+    } else if (mode === "eternal") {
+        info(getFullTitle() + " - Eternal Canonizer");
+    } else {
+        info(getFullTitle() + " - Autocanonizer");
+    }
     createTiles(masterQs);
 }
 
@@ -382,6 +416,9 @@ function setPlayingClass(modeName) {
     } else if (modeName === "jukebox") {
         document.body.classList.add("playing-jukebox");
         baseNoteStrength = 0.08;
+    } else if (modeName === "eternal") {
+        document.body.classList.add("playing-jukebox");
+        baseNoteStrength = 0.1;
     } else {
         baseNoteStrength = 0;
     }
@@ -517,7 +554,7 @@ function processParams() {
     if (requestedMode) {
         requestedMode = requestedMode.toLowerCase();
     }
-    if (requestedMode === "jukebox" || requestedMode === "canon") {
+    if (requestedMode === "jukebox" || requestedMode === "canon" || requestedMode === "eternal") {
         mode = requestedMode;
     }
     var trid = params.get("trid");
@@ -1015,11 +1052,34 @@ function createCanonDriver(player) {
     };
 }
 
-function createJukeboxDriver(player) {
+function createJukeboxDriver(player, options) {
+    options = options || {};
     var currentIndex = 0;
     var running = false;
     var mtime = $("#mtime");
-    var jumpProbability = 0.35;
+    var baseJumpProbability = options.baseJumpProbability || 0.22;
+    var jumpCooldown = 0;
+    var MIN_INDEX_GAP = 3;
+    var recentHistory = [];
+    var HISTORY_LIMIT = Math.max(12, Math.floor(masterQs.length ? masterQs.length * 0.04 : 12));
+    var HISTORY_GAP = 6;
+    var warmupBeatsOption = Object.prototype.hasOwnProperty.call(options, "warmupBeats") ? options.warmupBeats : null;
+    var warmupBeats = warmupBeatsOption || 0;
+    var warmupCountdown = 0;
+    var modeName = options.modeName || "jukebox";
+
+    function resetWarmup() {
+        if (warmupBeatsOption !== null) {
+            warmupBeats = warmupBeatsOption;
+        } else if (masterQs && masterQs.length) {
+            warmupBeats = masterQs.length;
+            HISTORY_LIMIT = Math.max(12, Math.floor(masterQs.length * 0.04));
+            HISTORY_GAP = Math.max(6, Math.floor(masterQs.length * 0.015));
+        } else {
+            warmupBeats = 0;
+        }
+        warmupCountdown = warmupBeats;
+    }
 
     function stop() {
         running = false;
@@ -1030,28 +1090,97 @@ function createJukeboxDriver(player) {
         pulseNotes(baseNoteStrength);
     }
 
-    function chooseNext(q) {
-        var sequential = q.next ? q.next.which : 0;
-        var options = [];
-        if (q.neighbors) {
-            for (var i = 0; i < q.neighbors.length; i++) {
-                var candidate = q.neighbors[i].beat;
-                if (candidate && candidate.which !== q.which) {
-                    options.push(candidate.which);
-                }
+    function remember(index) {
+        recentHistory.push(index);
+        if (recentHistory.length > HISTORY_LIMIT) {
+            recentHistory.shift();
+        }
+    }
+
+    function isRecentlyVisited(index) {
+        for (var i = 0; i < recentHistory.length; i++) {
+            if (Math.abs(recentHistory[i] - index) <= HISTORY_GAP) {
+                return true;
             }
         }
-        var filtered = _.filter(options, function(idx) {
-            return Math.abs(idx - q.which) > 2;
-        });
-        if (filtered.length === 0) {
-            filtered = options;
+        return false;
+    }
+
+    function pickNeighbor(q) {
+        if (!q.goodNeighbors || q.goodNeighbors.length === 0) {
+            return null;
         }
-        if (filtered.length > 0 && Math.random() < jumpProbability) {
-            return filtered[Math.floor(Math.random() * filtered.length)];
+        var candidates = [];
+        var totalWeight = 0;
+        for (var i = 0; i < q.goodNeighbors.length; i++) {
+            var entry = q.goodNeighbors[i];
+            var beat = entry.beat;
+            if (!beat || beat.which === q.which) {
+                continue;
+            }
+            var deltaIndex = Math.abs(beat.which - q.which);
+            if (deltaIndex < MIN_INDEX_GAP) {
+                continue;
+            }
+            var weight = 1 / Math.pow(Math.max(entry.distance, 8), 0.6);
+            if (q.section !== undefined && beat.section !== undefined && q.section === beat.section) {
+                weight *= 1.6;
+            }
+            if (isRecentlyVisited(beat.which)) {
+                weight *= 0.35;
+            }
+            if (weight <= 0) {
+                continue;
+            }
+            totalWeight += weight;
+            candidates.push({ which: beat.which, weight: weight });
         }
+        if (candidates.length === 0 || totalWeight <= 0) {
+            return null;
+        }
+        var target = Math.random() * totalWeight;
+        var runningWeight = 0;
+        for (var j = 0; j < candidates.length; j++) {
+            runningWeight += candidates[j].weight;
+            if (runningWeight >= target) {
+                return candidates[j].which;
+            }
+        }
+        return candidates[candidates.length - 1].which;
+    }
+
+    function chooseNext(q) {
+        var sequential = q.next ? q.next.which : 0;
         if (sequential >= masterQs.length) {
             sequential = 0;
+        }
+        if (warmupCountdown > 0) {
+            warmupCountdown -= 1;
+            return sequential;
+        }
+        if (jumpCooldown > 0) {
+            jumpCooldown -= 1;
+            return sequential;
+        }
+        var candidateIndex = pickNeighbor(q);
+        if (candidateIndex === null) {
+            return sequential;
+        }
+        var probability = baseJumpProbability;
+        if (q.goodNeighbors && q.goodNeighbors.length > 0) {
+            var bestDistance = q.goodNeighbors[0].distance;
+            var qualityFactor = Math.max(0, Math.min(1, (180 - bestDistance) / 180));
+            probability = 0.08 + 0.18 * qualityFactor;
+        }
+        if (q.next && q.next.section !== undefined && q.section !== undefined && q.next.section !== q.section) {
+            probability *= 0.5;
+        }
+        if (candidateIndex !== null && isRecentlyVisited(candidateIndex)) {
+            probability *= 0.3;
+        }
+        if (Math.random() < probability) {
+            jumpCooldown = 3;
+            return candidateIndex;
         }
         return sequential;
     }
@@ -1066,6 +1195,7 @@ function createJukeboxDriver(player) {
         updateCursors(q);
         mtime.text(fmtTime(q.start));
         pulseNotes(q.median_volume || q.volume || baseNoteStrength);
+        remember(currentIndex);
         var nextIndex = chooseNext(q);
         if (nextIndex < 0 || nextIndex >= masterQs.length) {
             nextIndex = 0;
@@ -1082,20 +1212,23 @@ function createJukeboxDriver(player) {
             resetTileColors(masterQs);
             currentIndex = 0;
             running = true;
+            resetWarmup();
+            recentHistory = [];
             process();
             setURL();
             $("#play").text("Stop");
-            setPlayingClass("jukebox");
+            setPlayingClass(modeName);
             pulseNotes(baseNoteStrength);
         },
 
         resume: function() {
             resetTileColors(masterQs);
             running = true;
+            recentHistory = recentHistory.slice(-Math.max(6, HISTORY_LIMIT / 2));
             process();
             setURL();
             $("#play").text("Stop");
-            setPlayingClass("jukebox");
+            setPlayingClass(modeName);
             pulseNotes(baseNoteStrength);
         },
 
@@ -1125,9 +1258,14 @@ function createJukeboxDriver(player) {
 function Driver(player) {
     if (mode === "jukebox") {
         return createJukeboxDriver(player);
-    } else {
-        return createCanonDriver(player);
+    } else if (mode === "eternal") {
+        return createJukeboxDriver(player, {
+            warmupBeats: masterQs ? masterQs.length : null,
+            baseJumpProbability: 0.18,
+            modeName: "eternal"
+        });
     }
+    return createCanonDriver(player);
 }
 
     window.onload = init;
@@ -1147,5 +1285,10 @@ function ga_track(page, action, id) {
 
 
 window.onload = init;
+
+
+
+
+
 
 

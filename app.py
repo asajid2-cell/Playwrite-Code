@@ -77,7 +77,11 @@ def locate_ffmpeg_bin() -> Optional[Path]:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    trid = request.args.get("trid")
+    mode = request.args.get("mode", "canon").lower()
+    if mode not in {"canon", "jukebox", "eternal"}:
+        mode = "canon"
+    return render_template("index.html", track_id=trid, mode=mode)
 
 
 @app.route("/visualizer")
@@ -85,7 +89,10 @@ def visualizer():
     if "trid" not in request.args:
         return redirect(url_for("index"))
     mode = request.args.get("mode", "canon").lower()
-    return render_template("visualizer.html", mode=mode)
+    if mode not in {"canon", "jukebox", "eternal"}:
+        mode = "canon"
+    redirect_url = url_for("index", trid=request.args["trid"], mode=mode)
+    return redirect(redirect_url)
 
 @app.route("/media/<path:filename>")
 def media(filename: str):
@@ -142,7 +149,7 @@ def _download_youtube(url: str, track_id: str) -> tuple[Path, Optional[dict]]:
 @app.route("/api/process", methods=["POST"])
 def api_process():
     algorithm = request.form.get("algorithm", "canon").lower()
-    if algorithm not in {"canon", "jukebox"}:
+    if algorithm not in {"canon", "jukebox", "eternal"}:
         return jsonify({"error": "Unsupported algorithm selection."}), 400
 
     source = request.form.get("source", "upload").lower()
@@ -192,8 +199,13 @@ def api_process():
             output_path=output_path,
         )
 
-        mode = "canon" if algorithm == "canon" else "jukebox"
-        redirect_url = url_for("visualizer", trid=track_id, mode=mode)
+        if algorithm == "canon":
+            mode = "canon"
+        elif algorithm == "jukebox":
+            mode = "jukebox"
+        else:
+            mode = "eternal"
+        redirect_url = url_for("index", trid=track_id, mode=mode)
         return jsonify({"redirect": redirect_url, "trackId": track_id})
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 500
@@ -203,4 +215,3 @@ def api_process():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-

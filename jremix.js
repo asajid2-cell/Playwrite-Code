@@ -280,7 +280,8 @@ function createJRemixer(context, jquery) {
                 var now = context.currentTime - deltaTime;
                 var delta = now - q.start;
 
-                otherGain.gain.value = (1 - masterGain) * q.otherGain;
+                var targetOther = (1 - masterGain) * q.otherGain;
+                // smooth ramp on other gain at (re)start to reduce clicks and align feel
                 if (curQ == null || curQ.other.next != q.other || Math.abs(skewDelta) > maxSkewDelta) {
                     skewDelta = 0;
                     if (ocurAudioSource) {
@@ -288,6 +289,17 @@ function createJRemixer(context, jquery) {
                     }
                     var oduration = q.other.track.audio_summary.duration - q.other.start;
                     ocurAudioSource = llPlay(q.other.track.buffer, q.other.start, oduration, otherGain);
+                    try {
+                        var now = context.currentTime;
+                        otherGain.gain.cancelScheduledValues(now);
+                        // start low and ramp up quickly to target
+                        otherGain.gain.setValueAtTime(0.0001, now);
+                        otherGain.gain.exponentialRampToValueAtTime(Math.max(0.0002, targetOther), now + Math.min(0.08, Math.max(0.02, q.duration * 0.25)));
+                    } catch (e) {
+                        otherGain.gain.value = targetOther;
+                    }
+                } else {
+                    otherGain.gain.value = targetOther;
                 }
                 skewDelta += q.duration - q.other.duration;
                 curQ = q;

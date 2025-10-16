@@ -1265,7 +1265,17 @@ function createCanonDriver(player) {
     return {
         start: function() {
             resetTileColors(masterQs);
-            curQ = 0;
+            // If the analysis provides a recommended start_index, prefer it
+            var startIdx = 0;
+            try {
+                if (curTrack && curTrack.analysis && curTrack.analysis.canon_alignment) {
+                    var si = curTrack.analysis.canon_alignment.start_index;
+                    if (typeof si === "number" && si >= 0 && si < masterQs.length) {
+                        startIdx = si;
+                    }
+                }
+            } catch (e) {}
+            curQ = startIdx;
             running = true;
             process();
             setURL();
@@ -1312,30 +1322,23 @@ function createJukeboxDriver(player, options) {
     var currentIndex = 0;
     var running = false;
     var mtime = $("#mtime");
-    var baseJumpProbability = options.baseJumpProbability || 0.22;
+    // Encourage earlier and more frequent musical jumps
+    var baseJumpProbability = (typeof options.baseJumpProbability === "number") ? options.baseJumpProbability : 0.30;
     var jumpCooldown = 0;
     var MIN_INDEX_GAP = 3;
     var recentHistory = [];
-    var noJumpStreakSec = 0;
     var initialBeats = masterQs ? masterQs.length : 0;
     var HISTORY_LIMIT = initialBeats ? Math.max(12, Math.floor(initialBeats * 0.04)) : 12;
     var HISTORY_GAP = initialBeats ? Math.max(6, Math.floor(initialBeats * 0.015)) : 6;
-    var warmupBeatsOption = Object.prototype.hasOwnProperty.call(options, "warmupBeats") ? options.warmupBeats : null;
+    // Loop before playing the whole track: default warmup is zero
+    var warmupBeatsOption = Object.prototype.hasOwnProperty.call(options, "warmupBeats") ? options.warmupBeats : 0;
     var warmupBeats = warmupBeatsOption || 0;
     var warmupCountdown = 0;
     var modeName = options.modeName || "jukebox";
-    var FORCE_JUMP_THRESHOLD_SEC = (typeof trackDuration === 'number' && !isNaN(trackDuration)) ? trackDuration * 0.15 : 12;
 
     function resetWarmup() {
-        if (warmupBeatsOption !== null) {
-            warmupBeats = warmupBeatsOption;
-        } else if (masterQs && masterQs.length) {
-            warmupBeats = masterQs.length;
-            HISTORY_LIMIT = Math.max(12, Math.floor(masterQs.length * 0.04));
-            HISTORY_GAP = Math.max(6, Math.floor(masterQs.length * 0.015));
-        } else {
-            warmupBeats = 0;
-        }
+        warmupBeats = (typeof warmupBeatsOption === "number") ? warmupBeatsOption : 0;
+        warmupBeats = Math.max(0, Math.floor(warmupBeats));
         warmupCountdown = warmupBeats;
     }
 
@@ -1424,17 +1427,12 @@ function createJukeboxDriver(player, options) {
         if (candidateIndex === null) {
             return sequential;
         }
-        // Force a jump if we've gone too long without one
-        if (noJumpStreakSec >= FORCE_JUMP_THRESHOLD_SEC) {
-            noJumpStreakSec = 0;
-            jumpCooldown = 2;
-            return candidateIndex;
-        }
         var probability = baseJumpProbability;
         if (q.goodNeighbors && q.goodNeighbors.length > 0) {
             var bestDistance = q.goodNeighbors[0].distance;
             var qualityFactor = Math.max(0, Math.min(1, (180 - bestDistance) / 180));
-            probability = 0.08 + 0.18 * qualityFactor;
+            // Ensure at least the configured base probability for healthy jumping
+            probability = Math.max(baseJumpProbability, 0.08 + 0.18 * qualityFactor);
         }
         if (q.next && q.next.section !== undefined && q.section !== undefined && q.next.section !== q.section) {
             probability *= 0.5;
@@ -1443,7 +1441,7 @@ function createJukeboxDriver(player, options) {
             probability *= 0.3;
         }
         if (Math.random() < probability) {
-            jumpCooldown = 3;
+            jumpCooldown = 2;
             return candidateIndex;
         }
         return sequential;
@@ -1464,16 +1462,6 @@ function createJukeboxDriver(player, options) {
         if (nextIndex < 0 || nextIndex >= masterQs.length) {
             nextIndex = 0;
         }
-        // Update "no jump" streak time based on whether we jumped
-        var sequential = q.next ? q.next.which : 0;
-        if (sequential >= masterQs.length) { sequential = 0; }
-        var didJump = (nextIndex !== sequential);
-        if (didJump) {
-            noJumpStreakSec = 0;
-        } else {
-            var inc = q && typeof q.duration === 'number' ? q.duration : delay;
-            if (!isNaN(inc) && inc > 0) { noJumpStreakSec += inc; }
-        }
         currentIndex = nextIndex;
         if (delay <= 0 || isNaN(delay)) {
             delay = q.duration;
@@ -1484,7 +1472,17 @@ function createJukeboxDriver(player, options) {
     return {
         start: function() {
             resetTileColors(masterQs);
-            currentIndex = 0;
+            // Prefer starting on analysis-provided start_index when available
+            var startIdx = 0;
+            try {
+                if (curTrack && curTrack.analysis && curTrack.analysis.canon_alignment) {
+                    var si = curTrack.analysis.canon_alignment.start_index;
+                    if (typeof si === "number" && si >= 0 && si < masterQs.length) {
+                        startIdx = si;
+                    }
+                }
+            } catch (e) {}
+            currentIndex = startIdx;
             running = true;
             resetWarmup();
             recentHistory = [];
@@ -1534,8 +1532,9 @@ function Driver(player) {
         return createJukeboxDriver(player);
     } else if (mode === "eternal") {
         return createJukeboxDriver(player, {
-            warmupBeats: masterQs ? masterQs.length : null,
-            baseJumpProbability: 0.12,
+            // Loop early; keep jumps slightly more conservative than pure jukebox
+            warmupBeats: 0,
+            baseJumpProbability: 0.22,
             modeName: "eternal"
         });
     }

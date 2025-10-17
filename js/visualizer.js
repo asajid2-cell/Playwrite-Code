@@ -26,15 +26,62 @@ var isTrackReady = false;
 var serverLoopCandidateMap = {};
 var canonLoopCandidates = [];
 var loopPaths = [];
-var canonSettings = {
-    minOffsetBeats: 8,
-    maxOffsetBeats: 64,
-    dwellBeats: 6,
-    density: 2,
-    variation: 2
+var ADVANCED_DEFAULTS = {
+    canonOverlay: {
+        minOffsetBeats: 8,
+        maxOffsetBeats: 64,
+        dwellBeats: 6,
+        density: 2,
+        variation: 2
+    },
+    eternalOverlay: {
+        minOffsetBeats: 8,
+        maxOffsetBeats: 64,
+        dwellBeats: 6,
+        density: 2,
+        variation: 2
+    },
+    jukeboxLoop: {
+        minLoopBeats: 12,
+        maxSequentialBeats: 36,
+        loopThreshold: 0.55,
+        sectionBias: 0.6,
+        jumpVariance: 0.4
+    },
+    eternalLoop: {
+        minLoopBeats: 8,
+        maxSequentialBeats: 28,
+        loopThreshold: 0.5,
+        sectionBias: 0.55,
+        jumpVariance: 0.5
+    }
 };
+
+function cloneSettings(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
+
+var advancedSettings = {
+    canonOverlay: cloneSettings(ADVANCED_DEFAULTS.canonOverlay),
+    eternalOverlay: cloneSettings(ADVANCED_DEFAULTS.eternalOverlay),
+    jukeboxLoop: cloneSettings(ADVANCED_DEFAULTS.jukeboxLoop),
+    eternalLoop: cloneSettings(ADVANCED_DEFAULTS.eternalLoop)
+};
+
+var advancedEnabled = {
+    canonOverlay: false,
+    eternalOverlay: false,
+    jukeboxLoop: false,
+    eternalLoop: false
+};
+
+var advancedPresets = {
+    canon: [],
+    eternal: [],
+    jukebox: []
+};
+
 var canonBaseAssignments = [];
-var canonAdvancedEnabled = false;
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
 

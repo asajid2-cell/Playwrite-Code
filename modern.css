@@ -238,7 +238,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     position: relative;
     z-index: 1;
     width: min(1400px, 96vw);
-    margin: 0 auto;
+    margin: 0 clamp(20px, 3vw, 56px) 0 auto;
     padding: clamp(12px, 2.4vw, 24px) clamp(14px, 3vw, 36px);
     display: grid;
     grid-template-columns: minmax(260px, 0.8fr) minmax(680px, 1.4fr);
@@ -289,6 +289,44 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     color: var(--color-muted);
     font-size: clamp(0.9rem, 1.8vw, 1.04rem);
     line-height: 1.6;
+}
+
+.layout {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: minmax(380px, 1fr);
+    gap: clamp(20px, 3vw, 36px);
+    margin-top: 0;
+    align-items: start;
+    justify-items: stretch;
+}
+
+.state-player .layout {
+    grid-template-columns: minmax(360px, 0.95fr) minmax(760px, 1.55fr);
+    gap: clamp(22px, 3.5vw, 44px);
+}
+
+.intake-panel {
+    justify-self: stretch;
+    max-width: min(520px, 100%);
+    width: 100%;
+}
+
+.viz-panel {
+    justify-self: stretch;
+    width: 100%;
+}
+
+.state-player .viz-panel {
+    grid-column: 2;
+}
+
+.state-player .intake-panel {
+    grid-column: 1;
+}
+
+.state-home .layout {
+    justify-items: end;
 }
 
 .cta {
@@ -573,6 +611,8 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto;
         gap: 24px;
+        margin: 0 auto;
+        width: min(100%, 94vw);
     }
 
     .hero {

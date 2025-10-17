@@ -107,48 +107,31 @@
                             Press space to toggle playback · drag the window wider for detail
                         </footer>
                     </div>
-                    <aside class="viz-sidebar hidden" id="canon-sidebar">
-                        <div id="canon-controls" class="viz-tuning hidden">
-                            <label class="canon-advanced-toggle">
-                                <input type="checkbox" id="canon-advanced-toggle">
-                                <span>Advanced Mode</span>
+                    <aside class="viz-sidebar hidden" id="advanced-sidebar">
+                        <div id="advanced-controls-header" class="viz-tuning hidden">
+                            <label class="advanced-mode-toggle">
+                                <input type="checkbox" id="advanced-mode-toggle">
+                                <span>Advanced mode</span>
                             </label>
-                            <button type="button" id="canon-settings-toggle" class="viz-button ghost">Canon Controls</button>
-                            <button type="button" id="canon-regenerate" class="viz-button ghost">Regenerate</button>
-                            <button type="button" id="canon-reset" class="viz-button ghost">Reset</button>
+                            <button type="button" id="advanced-apply" class="viz-button ghost">Apply</button>
+                            <button type="button" id="advanced-reset" class="viz-button ghost">Reset</button>
                         </div>
-                        <div id="canon-settings-panel" class="canon-settings-panel hidden" aria-hidden="true">
-                            <div class="canon-setting-row">
-                                <label for="canon-min-offset">Min Offset</label>
-                                <input type="range" id="canon-min-offset" min="1" max="32" step="1" value="8">
-                                <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
+                        <div id="advanced-settings-panel" class="advanced-settings-panel hidden" aria-hidden="true">
+                            <div id="advanced-control-container" class="advanced-control-container"></div>
+                            <div class="preset-panel">
+                                <div class="preset-save-row">
+                                    <input type="text" id="preset-name" placeholder="Preset name">
+                                    <button type="button" id="preset-save" class="viz-button ghost">Save</button>
+                                    <button type="button" id="preset-download" class="viz-button ghost">Download</button>
+                                </div>
+                                <div class="preset-import-row">
+                                    <label class="preset-upload viz-button ghost">
+                                        <input type="file" id="preset-upload" accept="application/json">
+                                        Import
+                                    </label>
+                                </div>
+                                <div id="preset-list" class="preset-list"></div>
                             </div>
-                            <p class="canon-setting-hint">Shortest distance (in beats) between the main voice and the canon voice.</p>
-                            <div class="canon-setting-row">
-                                <label for="canon-max-offset">Max Offset</label>
-                                <input type="range" id="canon-max-offset" min="8" max="96" step="1" value="64">
-                                <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
-                            </div>
-                            <p class="canon-setting-hint">Farthest beat separation to consider when searching for canon partners.</p>
-                            <div class="canon-setting-row">
-                                <label for="canon-dwell">Hold Duration</label>
-                                <input type="range" id="canon-dwell" min="1" max="16" step="1" value="6">
-                                <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
-                            </div>
-                            <p class="canon-setting-hint">How long the canon sticks with each offset before exploring a new one.</p>
-                            <div class="canon-setting-row">
-                                <label for="canon-density">Texture</label>
-                                <input type="range" id="canon-density" min="1" max="5" step="1" value="2">
-                                <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
-                            </div>
-                            <p class="canon-setting-hint">Controls how many overlay arcs are introduced across the song.</p>
-                            <div class="canon-setting-row">
-                                <label for="canon-variation">Variation</label>
-                                <input type="range" id="canon-variation" min="0" max="6" step="1" value="2">
-                                <span class="canon-setting-value" data-setting-display="variation">2</span>
-                            </div>
-                            <p class="canon-setting-hint">Adds a touch of randomness to keep canon jumps from feeling predictable.</p>
-                            <p class="canon-settings-note">Adjust and regenerate the canon in real time without reloading the track.</p>
                         </div>
                     </aside>
                 </div>

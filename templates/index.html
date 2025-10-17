@@ -100,6 +100,10 @@
                     </div>
                 </header>
                 <div id="canon-controls" class="viz-tuning hidden">
+                    <label class="canon-advanced-toggle">
+                        <input type="checkbox" id="canon-advanced-toggle">
+                        <span>Advanced Mode</span>
+                    </label>
                     <button type="button" id="canon-settings-toggle" class="viz-button ghost">Canon Controls</button>
                     <button type="button" id="canon-regenerate" class="viz-button ghost">Regenerate</button>
                     <button type="button" id="canon-reset" class="viz-button ghost">Reset</button>
@@ -327,6 +331,40 @@
             syncMaxMin();
         }
 
+        const canonAdvancedToggle = document.getElementById('canon-advanced-toggle');
+        const sliderElements = canonPanel ? Array.from(canonPanel.querySelectorAll('input[type="range"]')) : [];
+        const controlButtons = [canonRegenerateBtn, canonResetBtn];
+
+        const setCanonControlsEnabled = (enabled) => {
+            const allow = !!enabled;
+            sliderElements.forEach((el) => {
+                el.disabled = !allow;
+            });
+            controlButtons.forEach((btn) => {
+                if (btn) {
+                    btn.disabled = !allow;
+                }
+            });
+            if (canonToggleBtn) {
+                canonToggleBtn.disabled = !allow;
+            }
+            if (!allow && canonPanel) {
+                canonPanel.classList.add('hidden');
+                canonPanel.setAttribute('aria-hidden', 'true');
+            }
+        };
+
+        setCanonControlsEnabled(false);
+
+        if (canonAdvancedToggle) {
+            canonAdvancedToggle.addEventListener('change', () => {
+                const enabled = canonAdvancedToggle.checked;
+                if (typeof window.setCanonAdvancedEnabled === 'function') {
+                    window.setCanonAdvancedEnabled(enabled);
+                }
+            });
+        }
+
         if (canonToggleBtn && canonPanel) {
             canonToggleBtn.addEventListener('click', () => {
                 const isHidden = canonPanel.classList.toggle('hidden');
@@ -374,6 +412,15 @@
                 canonPanel.classList.add('hidden');
                 canonPanel.setAttribute('aria-hidden', 'true');
             }
+            if (!visible) {
+                setCanonControlsEnabled(false);
+            } else {
+                const current = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+                setCanonControlsEnabled(current);
+                if (canonAdvancedToggle) {
+                    canonAdvancedToggle.checked = current;
+                }
+            }
         };
 
         window.onCanonTrackReady = (payload) => {
@@ -386,6 +433,7 @@
                     canonPanel.classList.add('hidden');
                     canonPanel.setAttribute('aria-hidden', 'true');
                 }
+                setCanonControlsEnabled(false);
                 return;
             }
             canonControls.classList.remove('hidden');
@@ -417,6 +465,18 @@
                 const maxValue = Math.min(payload.maxOffsetBeats || defaultCanonSettings.maxOffsetBeats, cap);
                 maxSlider.value = maxValue;
                 maxSlider.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            const currentAdvanced = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+            setCanonControlsEnabled(currentAdvanced);
+            if (canonAdvancedToggle) {
+                canonAdvancedToggle.checked = currentAdvanced;
+            }
+        };
+
+        window.onCanonModeChanged = (enabled) => {
+            setCanonControlsEnabled(enabled);
+            if (canonAdvancedToggle) {
+                canonAdvancedToggle.checked = !!enabled;
             }
         };
 

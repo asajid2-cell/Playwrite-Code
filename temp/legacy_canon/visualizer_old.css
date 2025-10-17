@@ -45,7 +45,7 @@
     overflow: hidden;
     background: rgba(20, 3, 9, 0.42);
     box-shadow: inset 0 0 60px rgba(232, 180, 184, 0.08);
-    transition: box-shadow 0.5s ease, opacity 0.5s ease, transform 0.5s ease;
+    transition: box-shadow 0.5s ease, background 0.5s ease, transform 0.5s ease;
 }
 
 .music-frame::before {
@@ -65,89 +65,6 @@
     display: flex;
     align-items: center;
     gap: 14px;
-}
-
-.viz-button.ghost {
-    background: rgba(232, 180, 184, 0.12);
-    border: 1px solid rgba(232, 180, 184, 0.32);
-    color: rgba(232, 180, 184, 0.86);
-}
-
-.viz-button.ghost:hover {
-    background: rgba(232, 180, 184, 0.2);
-    box-shadow: 0 0 22px rgba(232, 180, 184, 0.24);
-}
-
-.viz-tuning {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.canon-settings-panel {
-    margin-top: 14px;
-    padding: 18px;
-    border-radius: 16px;
-    background: rgba(26, 6, 12, 0.52);
-    border: 1px solid rgba(232, 180, 184, 0.18);
-    box-shadow: inset 0 0 40px rgba(232, 180, 184, 0.12);
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.canon-advanced-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.78rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(232, 180, 184, 0.68);
-}
-
-.canon-advanced-toggle input {
-    accent-color: var(--color-accent);
-}
-
-.canon-setting-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.canon-setting-row label {
-    flex: 0 0 150px;
-    font-size: 0.68rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(232, 180, 184, 0.72);
-}
-
-.canon-setting-row input[type="range"] {
-    flex: 1 1 auto;
-    accent-color: var(--color-accent);
-}
-
-.canon-setting-value {
-    width: 72px;
-    text-align: right;
-    color: var(--color-text);
-    font-size: 0.82rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.canon-settings-note {
-    font-size: 0.76rem;
-    color: rgba(232, 180, 184, 0.62);
-    letter-spacing: 0.07em;
-}
-
-.canon-settings-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
 }
 
 .viz-button {
@@ -227,22 +144,6 @@
     .viz-actions {
         width: 100%;
         justify-content: space-between;
-    }
-    .viz-tuning {
-        justify-content: flex-start;
-    }
-    .canon-setting-row {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .canon-setting-row label {
-        flex: none;
-    }
-    .canon-setting-row input[type="range"] {
-        width: 100%;
-    }
-    .canon-setting-value {
-        align-self: flex-end;
     }
 }
 

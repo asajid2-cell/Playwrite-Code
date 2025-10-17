@@ -1,14 +1,14 @@
 :root {
-    --color-bg: #040404;
-    --color-panel: rgba(26, 6, 12, 0.84);
-    --color-panel-soft: rgba(46, 8, 20, 0.68);
-    --color-border: rgba(232, 180, 184, 0.22);
+    --color-bg: #070406;
+    --color-panel: rgba(19, 6, 12, 0.82);
+    --color-panel-soft: rgba(41, 10, 22, 0.68);
+    --color-border: rgba(232, 180, 184, 0.18);
     --color-text: rgba(248, 244, 247, 0.94);
-    --color-muted: rgba(248, 244, 247, 0.66);
+    --color-muted: rgba(248, 244, 247, 0.64);
     --color-accent: #E8B4B8;
     --color-accent-strong: #C7365F;
-    --shadow: 0 28px 60px rgba(0, 0, 0, 0.55);
-    --radius: 26px;
+    --shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    --radius: 22px;
     --note-strength: 0;
     font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -32,18 +32,29 @@ body {
     margin: 0;
     min-height: 100vh;
     background-color: var(--color-bg);
-    background-image: radial-gradient(160% 120% at 50% 12%, rgba(160, 30, 60, 0.35), transparent 52%),
-                      radial-gradient(120% 120% at 50% 120%, rgba(35, 10, 18, 0.55), transparent 68%),
-                      linear-gradient(var(--color-bg), var(--color-bg));
     color: var(--color-text);
     display: flex;
-    background-attachment: fixed;
+    position: relative;
+    overflow-x: hidden;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 130% at 50% 0%, rgba(199, 54, 95, 0.22), transparent 60%),
+                radial-gradient(130% 140% at 65% 110%, rgba(40, 12, 24, 0.72), transparent 68%),
+                linear-gradient(160deg, rgba(10, 3, 8, 0.94), rgba(6, 2, 6, 0.94));
+    transform: translateZ(0);
 }
 
 .page {
     width: 100%;
     position: relative;
     overflow-x: hidden;
+    z-index: 1;
 }
 
 .music-field {
@@ -285,8 +296,8 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     margin-top: 10px;
     padding: 14px 28px;
     border-radius: 999px;
-    border: none;
-    background: linear-gradient(120deg, rgba(232, 180, 184, 0.3), rgba(199, 54, 95, 0.26));
+    border: 1px solid rgba(232, 180, 184, 0.22);
+    background: linear-gradient(120deg, rgba(232, 180, 184, 0.22), rgba(199, 54, 95, 0.22));
     color: var(--color-text);
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -297,7 +308,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 
 .cta:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(232, 180, 184, 0.26);
+    box-shadow: 0 10px 26px rgba(232, 180, 184, 0.24);
 }
 
 .cta.ghost {
@@ -364,7 +375,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     transform: scale(1);
     opacity: 1;
     max-height: 1200px;
-    box-shadow: 0 32px 80px rgba(232, 180, 184, 0.25), inset 0 0 50px rgba(232, 180, 184, 0.18);
+    box-shadow: 0 24px 64px rgba(232, 180, 184, 0.2), inset 0 0 46px rgba(232, 180, 184, 0.16);
 }
 
 .state-home .layout {
@@ -373,65 +384,69 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 
 .panel {
     position: relative;
-    border-radius: 18px;
-    border: 1px solid rgba(232, 180, 184, 0.18);
-    background: linear-gradient(135deg, rgba(26,6,12,0.72) 10%, rgba(46,8,20,0.58) 90%);
-    box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+    border-radius: var(--radius);
+    border: 1px solid rgba(232, 180, 184, 0.12);
+    background: linear-gradient(150deg, rgba(18, 6, 11, 0.9), rgba(32, 8, 18, 0.72));
+    box-shadow: var(--shadow);
     padding: clamp(18px, 3vw, 28px);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(16px);
     display: flex;
     flex-direction: column;
     gap: 22px;
-    min-height: 260px;
+    min-height: 240px;
 }
 
 .panel h2 {
     margin: 0;
-    font-size: 1.35rem;
-    letter-spacing: 0.12em;
+    font-size: 1.28rem;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: rgba(232, 180, 184, 0.82);
+    color: rgba(232, 180, 184, 0.86);
 }
 
 .section-title {
     text-transform: uppercase;
-    font-size: 0.72rem;
-    letter-spacing: 0.18em;
-    color: rgba(232, 180, 184, 0.6);
-    margin-bottom: 10px;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    color: rgba(232, 180, 184, 0.58);
+    margin-bottom: 8px;
 }
+
 
 .toggle-group {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    padding: 6px;
-    border-radius: 20px;
-    background: rgba(232, 180, 184, 0.08);
-    border: 1px solid rgba(232, 180, 184, 0.18);
-    margin-bottom: 24px;
+    gap: 8px;
+    padding: 4px;
+    border-radius: 18px;
+    background: rgba(232, 180, 184, 0.06);
+    border: 1px solid rgba(232, 180, 184, 0.14);
+    margin-bottom: 22px;
 }
 
 .toggle {
     flex: 1 1 140px;
-    padding: 14px 16px;
-    background: rgba(232, 180, 184, 0.1);
+    padding: 12px 16px;
+    background: rgba(232, 180, 184, 0.08);
     color: var(--color-text);
-    border: 1px solid rgba(232, 180, 184, 0.24);
-    border-radius: 16px;
+    border: 1px solid transparent;
+    border-radius: 14px;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     text-align: center;
     min-width: 0;
 }
 
+.toggle:hover {
+    background: rgba(232, 180, 184, 0.16);
+}
+
 .toggle.active {
-    background: linear-gradient(135deg, rgba(232, 180, 184, 0.24), rgba(199, 54, 95, 0.22));
-    color: var(--color-accent);
-    border-color: rgba(232, 180, 184, 0.6);
-    box-shadow: 0 8px 20px rgba(232, 180, 184, 0.18);
+    background: linear-gradient(135deg, rgba(232, 180, 184, 0.28), rgba(199, 54, 95, 0.24));
+    color: var(--color-text);
+    box-shadow: 0 10px 24px rgba(232, 180, 184, 0.18);
 }
 
 .toggle:focus-visible {
@@ -514,9 +529,9 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 .footer {
     text-align: center;
     padding-top: 16px;
-    color: rgba(232, 180, 184, 0.48);
-    font-size: 0.82rem;
-    letter-spacing: 0.18em;
+    color: rgba(232, 180, 184, 0.5);
+    font-size: 0.78rem;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
 }
 

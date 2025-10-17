@@ -114,26 +114,31 @@
                         <input type="range" id="canon-min-offset" min="1" max="32" step="1" value="8">
                         <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
                     </div>
+                    <p class="canon-setting-hint">Shortest distance (in beats) between the main voice and the canon voice.</p>
                     <div class="canon-setting-row">
                         <label for="canon-max-offset">Max Offset</label>
                         <input type="range" id="canon-max-offset" min="8" max="96" step="1" value="64">
                         <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
                     </div>
+                    <p class="canon-setting-hint">Farthest beat separation to consider when searching for canon partners.</p>
                     <div class="canon-setting-row">
                         <label for="canon-dwell">Hold Duration</label>
                         <input type="range" id="canon-dwell" min="1" max="16" step="1" value="6">
                         <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
                     </div>
+                    <p class="canon-setting-hint">How long the canon sticks with each offset before exploring a new one.</p>
                     <div class="canon-setting-row">
                         <label for="canon-density">Texture</label>
                         <input type="range" id="canon-density" min="1" max="5" step="1" value="2">
                         <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
                     </div>
+                    <p class="canon-setting-hint">Controls how many overlay arcs are introduced across the song.</p>
                     <div class="canon-setting-row">
                         <label for="canon-variation">Variation</label>
                         <input type="range" id="canon-variation" min="0" max="6" step="1" value="2">
                         <span class="canon-setting-value" data-setting-display="variation">2</span>
                     </div>
+                    <p class="canon-setting-hint">Adds a touch of randomness to keep canon jumps from feeling predictable.</p>
                     <p class="canon-settings-note">Adjust the canon voice in real-time. Tap Regenerate to explore alternate overlays without reloading your track.</p>
                 </div>
                 <div class="viz-status" id="status-panel"></div>
@@ -146,7 +151,7 @@
         </main>
 
         <footer class="footer">
-            Crafted for modern remixes &middot; palette: obsidian / carmine / rose quartz
+            © Harmonizer Lab
         </footer>
     </div>
 
@@ -357,6 +362,7 @@
         setCanonControlsEnabled(false);
 
         if (canonAdvancedToggle) {
+            canonAdvancedToggle.checked = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
             canonAdvancedToggle.addEventListener('change', () => {
                 const enabled = canonAdvancedToggle.checked;
                 if (typeof window.setCanonAdvancedEnabled === 'function') {

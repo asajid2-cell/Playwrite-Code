@@ -21,17 +21,16 @@
         <header class="hero">
             <div class="hero-meta">
                 <div class="badge">Harmonizer Lab</div>
-                <h1>Canonize, Remix, Glow.</h1>
-                <p>Upload, analyze, and perform without swapping pages. The stage morphs from intake to live visualizer when your mix is ready.</p>
-                
+                <h1>Autocanonizer</h1>
+                <p>Analyze a track and perform it as a canon—clean visuals, smooth overlays, zero fuss.</p>
             </div>
         </header>
 
         <main class="layout">
             <section class="panel intake-panel" id="intake-panel">
-                <h2>Load a track</h2>
+                <h2>Load A Track</h2>
                 <form id="process-form" enctype="multipart/form-data" novalidate>
-                    <div class="section-title">Choose your engine</div>
+                    <div class="section-title">Engine</div>
                     <div class="toggle-group" id="algorithm-toggle">
                         <button type="button" data-algorithm="canon" class="toggle active">Autocanonizer</button>
                         <button type="button" data-algorithm="jukebox" class="toggle">Eternal Jukebox</button>
@@ -39,7 +38,7 @@
                     </div>
                     <input type="hidden" name="algorithm" value="canon" id="algorithm-input">
 
-                    <div class="section-title">Pick a source</div>
+                    <div class="section-title">Source</div>
                     <div class="toggle-group" id="source-toggle">
                         <button type="button" data-source="upload" class="toggle active">Upload Audio</button>
                         <button type="button" data-source="youtube" class="toggle">YouTube</button>
@@ -62,7 +61,7 @@
 
                     <div class="metadata-grid">
                         <label class="field">
-                            <span>Track title <small>(optional)</small></span>
+                            <span>Title <small>(optional)</small></span>
                             <input type="text" name="title" placeholder="Auto-detected when possible">
                         </label>
                         <label class="field">
@@ -75,8 +74,8 @@
                 </form>
                 <div id="form-status" class="status-panel" role="status" aria-live="polite"></div>
                 <div class="tips">
-                    <p>Tip: YouTube downloads require <code>ffmpeg</code> on your PATH.</p>
-                    <p class="meta">Prefer the CLI? Run <code>python analysis/analyze_track.py --help</code>.</p>
+                    <p>YouTube imports require <code>ffmpeg</code> in PATH.</p>
+                    <p class="meta">CLI: <code>python analysis/analyze_track.py --help</code></p>
                 </div>
             </section>
 

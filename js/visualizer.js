@@ -24,6 +24,8 @@ var notePulseTimer = null;
 var tiles = [];
 var isTrackReady = false;
 var serverLoopCandidateMap = {};
+var canonLoopCandidates = [];
+var loopPaths = [];
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
 
@@ -125,9 +127,9 @@ var yesSims = 0
 
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
-    var maxNeighbors = 10;
+    var maxNeighbors = 8;
     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
-    var MIN_INDEX_SPREAD = 2;
+    var MIN_INDEX_SPREAD = 3;
 
     for (var i = 0; i < list.length; i++) {
         var q2 = list[i];
@@ -145,18 +147,19 @@ function calculateNearestNeighborsForQuantum(list, q1) {
             }
             sum += distance;
         }
-        var pdistance = q1.indexInParent == q2.indexInParent ? 0 : 100;
+        var pdistance = q1.indexInParent == q2.indexInParent ? 0 : 120;
         var baseDistance = sum / q1.overlappingSegments.length + pdistance;
         if (!isFinite(baseDistance)) {
             baseDistance = 1000;
         }
-        var sectionPenalty = (q1.section !== undefined && q2.section !== undefined && q1.section !== q2.section) ? 220 : 0;
+        // Strongly prefer staying in-section for safer texture
+        var sectionPenalty = (q1.section !== undefined && q2.section !== undefined && q1.section !== q2.section) ? 420 : 0;
         var timePenalty = 0;
         if (duration > 0) {
             var deltaTime = Math.abs(q1.start - q2.start);
-            timePenalty = (deltaTime / duration) * 90;
+            timePenalty = (deltaTime / duration) * 70;
         }
-        var flowPenalty = Math.max(0, (MIN_INDEX_SPREAD + 2) - Math.abs(q1.which - q2.which)) * 18;
+        var flowPenalty = Math.max(0, (MIN_INDEX_SPREAD + 2) - Math.abs(q1.which - q2.which)) * 22;
         var totalDistance = baseDistance + sectionPenalty + timePenalty + flowPenalty;
         if (totalDistance > 0) {
             neighbors.push({ beat: q2, distance: totalDistance });
@@ -202,7 +205,8 @@ function calculateNearestNeighborsForQuantum(list, q1) {
         q1.sim = neighbors[0].beat;
         q1.simDistance = neighbors[0].distance;
         var bestDistance = neighbors[0].distance;
-        var qualityThreshold = bestDistance + 35;
+        // Keep only in-section, similarly close options; small cushion
+        var qualityThreshold = bestDistance + 28;
         var filtered = _.filter(neighbors, function(n) {
             return n.distance <= qualityThreshold && n.beat && n.beat.section === q1.section;
         });
@@ -294,7 +298,17 @@ function findMax(dict) {
     return maxKey;
 }
 
+function clearLoopPaths() {
+    _.each(loopPaths, function(path) {
+        if (path && typeof path.remove === "function") {
+            path.remove();
+        }
+    });
+    loopPaths = [];
+}
+
 function applyCanonAlignment(qlist, alignment) {
+    canonLoopCandidates = [];
     if (!alignment || !alignment.pairs || alignment.pairs.length !== qlist.length) {
         return false;
     }
@@ -304,6 +318,7 @@ function applyCanonAlignment(qlist, alignment) {
     var segments = alignment.segments || [];
     var coverageInfo = alignment.coverage || {};
     var coverageRatio = (typeof coverageInfo.ratio === "number") ? coverageInfo.ratio : null;
+    var similarityThreshold = (typeof alignment.similarity_threshold === "number") ? alignment.similarity_threshold : 0.5;
     var segmentMap = {};
     _.each(segments, function(seg, segIndex) {
         if (!seg || typeof seg.start !== "number" || typeof seg.end !== "number") {
@@ -363,10 +378,203 @@ function applyCanonAlignment(qlist, alignment) {
         if (coverageRatio !== null && coverageRatio < 0.75) {
             gainBase *= 0.92;
         }
-        var gain = gainBase + simNorm * 0.45;
-        q.otherGain = Math.min(1, Math.max(0.2, gain));
+        if (sim < similarityThreshold) {
+            q.otherGain = 0;
+        } else {
+            var gain = gainBase + simNorm * 0.45;
+            q.otherGain = Math.min(1, Math.max(0.25, gain));
+        }
+    }
+
+    if (alignment.loop_candidates && alignment.loop_candidates.length) {
+        var loopList = [];
+        _.each(alignment.loop_candidates, function(edge) {
+            if (!edge) {
+                return;
+            }
+            var src = edge.source;
+            var dst = edge.target;
+            if (typeof src !== "number" || typeof dst !== "number") {
+                return;
+            }
+            var simVal = (typeof edge.similarity === "number") ? edge.similarity : 0;
+            if (simVal < similarityThreshold) {
+                return;
+            }
+            loopList.push({
+                source_start: src,
+                target_start: dst,
+                similarity: simVal
+            });
+            if (dst > src) {
+                loopList.push({
+                    source_start: dst,
+                    target_start: src,
+                    similarity: simVal
+                });
+            }
+        });
+        canonLoopCandidates = loopList;
+    } else {
+        canonLoopCandidates = [];
     }
     return true;
+}
+
+// Enrich overlay mapping with short, safe retarget runs centered in the track
+// - Only within the middle portion of the song
+// - Choose neighbors within the same section and small distance
+// - Maintain a constant index offset across each short run to preserve timing
+function enrichOverlayConnections(qlist, options) {
+    options = options || {};
+    if (!qlist || !qlist.length) {
+        return;
+    }
+    var n = qlist.length;
+    var startIdx = Math.floor(n * (options.midStartFrac || 0.25));
+    var endIdx = Math.floor(n * (options.midEndFrac || 0.85));
+    if (endIdx <= startIdx + 4) {
+        return;
+    }
+    var baseSpacing = Math.max(10, options.spacing || 16);
+    var maxRun = Math.max(2, options.maxRun || 4);
+    var maxJitter = Math.max(0, options.jitter || 3);
+    var maxDistance = Math.max(40, options.maxDistance || 60);
+    var minAbsOffset = Math.max(3, options.minAbsOffset || 5);
+    for (var i = startIdx; i < endIdx; ) {
+        var q = qlist[i];
+        if (!q) { i += 1; continue; }
+        var chosen = null;
+        var baseNeighbors = (q.goodNeighbors && q.goodNeighbors.length) ? q.goodNeighbors : q.neighbors;
+        if (baseNeighbors && baseNeighbors.length) {
+            for (var k = 0; k < baseNeighbors.length; k++) {
+                var entry = baseNeighbors[k];
+                if (!entry || !entry.beat) { continue; }
+                if (entry.distance > maxDistance) { continue; }
+                // stay within section
+                if (q.section !== undefined && entry.beat.section !== undefined && q.section !== entry.beat.section) {
+                    continue;
+                }
+                var delta = entry.beat.which - q.which;
+                if (Math.abs(delta) < minAbsOffset) { continue; }
+                // ensure target index is valid for a short run
+                var runLen = Math.min(maxRun, endIdx - i);
+                if (i + runLen + delta < 0 || i + runLen + delta >= n) {
+                    continue;
+                }
+                chosen = { offset: delta, length: runLen };
+                break;
+            }
+        }
+        if (chosen) {
+            var offset = chosen.offset;
+            var run = chosen.length;
+            for (var r = 0; r < run; r++) {
+                var qi = qlist[i + r];
+                if (!qi) { break; }
+                var ti = i + r + offset;
+                if (ti < 0 || ti >= n) { break; }
+                qi.other = qlist[ti];
+                // Keep overlay moderate; analyzer may raise gains later
+                if (typeof qi.otherGain !== 'number' || qi.otherGain === 0) {
+                    qi.otherGain = 0.35;
+                } else {
+                    qi.otherGain = Math.min(0.9, Math.max(0.25, qi.otherGain));
+                }
+            }
+        }
+        var step = baseSpacing + Math.floor(Math.random() * (maxJitter + 1));
+        i += step;
+    }
+}
+
+// Smooths per-beat canon target to reduce rapid back-and-forth and encourage
+// piecewise-constant offsets, while only selecting musically valid candidates.
+function smoothCanonMapping(qlist, options) {
+    options = options || {};
+    if (!qlist || !qlist.length) { return; }
+    var windowSize = Math.max(3, options.windowSize || 7);
+    var minAbsOffset = Math.max(3, options.minAbsOffset || 5);
+    var minDwell = Math.max(2, options.minDwell || 4);
+    var preferSameSection = true;
+
+    function runningMedian(arr, idx, w) {
+        var half = Math.floor(w / 2);
+        var start = Math.max(0, idx - half);
+        var end = Math.min(arr.length - 1, idx + half);
+        var vals = [];
+        for (var i = start; i <= end; i++) { if (typeof arr[i] === 'number' && isFinite(arr[i])) vals.push(arr[i]); }
+        if (!vals.length) { return null; }
+        vals.sort(function(a,b){ return a-b; });
+        return vals[Math.floor(vals.length / 2)];
+    }
+
+    var deltas = [];
+    for (var i = 0; i < qlist.length; i++) {
+        var q = qlist[i];
+        deltas[i] = (q && q.other) ? (q.other.which - q.which) : null;
+    }
+
+    var lastDelta = null;
+    var runLen = 0;
+    for (var i = 0; i < qlist.length; i++) {
+        var q = qlist[i];
+        if (!q) continue;
+        var pref = runningMedian(deltas, i, windowSize);
+        if (pref === null) { continue; }
+        var preferred = Math.round(pref);
+        if (Math.abs(preferred) < minAbsOffset) {
+            preferred = preferred >= 0 ? minAbsOffset : -minAbsOffset;
+        }
+        // Assemble candidates: current, goodNeighbors, plus neighbors list
+        var cands = [];
+        if (q.other) cands.push({ b: q.other, dist: 0 });
+        if (q.goodNeighbors && q.goodNeighbors.length) {
+            for (var k = 0; k < Math.min(6, q.goodNeighbors.length); k++) {
+                var ge = q.goodNeighbors[k];
+                if (ge && ge.beat) { cands.push({ b: ge.beat, dist: ge.distance }); }
+            }
+        }
+        if (q.neighbors && q.neighbors.length) {
+            for (var k2 = 0; k2 < Math.min(6, q.neighbors.length); k2++) {
+                var ne = q.neighbors[k2];
+                if (ne && ne.beat) { cands.push({ b: ne.beat, dist: ne.distance }); }
+            }
+        }
+        var best = null;
+        for (var c = 0; c < cands.length; c++) {
+            var b = cands[c].b; var d = cands[c].dist;
+            var delta = b.which - q.which;
+            if (Math.abs(delta) < minAbsOffset) continue;
+            if (preferSameSection && q.section !== undefined && b.section !== undefined && q.section !== b.section) continue;
+            var deltaCost = Math.abs(delta - preferred);
+            var simCost = (typeof d === 'number') ? (d / 200.0) : 1.0;
+            var cost = deltaCost + simCost;
+            if (!best || cost < best.cost) { best = { beat: b, cost: cost, delta: delta }; }
+        }
+        // Dwell/hysteresis: resist changing offset too often
+        if (best) {
+            if (lastDelta === null || best.delta === lastDelta) {
+                runLen += 1;
+            } else {
+                if (runLen < minDwell) {
+                    // force continuity by projecting previous delta if valid
+                    var ti = i + lastDelta;
+                    if (lastDelta !== null && ti >= 0 && ti < qlist.length) {
+                        q.other = qlist[ti];
+                        deltas[i] = lastDelta;
+                        runLen += 1;
+                        continue;
+                    }
+                }
+                lastDelta = best.delta;
+                runLen = 1;
+            }
+            q.other = best.beat;
+            deltas[i] = best.delta;
+            lastDelta = best.delta;
+        }
+    }
 }
 
 function augmentCanonNeighbors(qlist, alignment) {
@@ -375,6 +583,7 @@ function augmentCanonNeighbors(qlist, alignment) {
     }
     var transitions = alignment.transitions;
     var loopEdges = alignment.loop_candidates || [];
+    var similarityThreshold = (typeof alignment.similarity_threshold === "number") ? alignment.similarity_threshold : 0.5;
     _.each(loopEdges, function(edge) {
         if (!edge) {
             return;
@@ -393,6 +602,9 @@ function augmentCanonNeighbors(qlist, alignment) {
             return;
         }
         var simVal = (typeof edge.similarity === "number") ? edge.similarity : 0;
+        if (simVal < similarityThreshold * 0.9) {
+            return;
+        }
         var simNorm = Math.max(0, Math.min(1, (simVal + 1) / 2));
         var distance = Math.max(4, 12 + (1 - simNorm) * 120);
         if (!srcBeat.neighbors) {
@@ -497,7 +709,8 @@ function foldBySection(qlist) {
                 var fallback = q.next ? q.next : q;
                 if (bestDelta === null || q.sim == null || q.sim.section !== section) {
                     q.other = fallback;
-                    q.otherGain = (fallback === q) ? 0 : 0.2;
+                    // conservative overlay in fallback mode to avoid harshness
+                    q.otherGain = (fallback === q) ? 0 : 0.15;
                 } else {
                     var next = q.which - bestDelta;
                     if (next >= 0 && next < qlist.length) {
@@ -505,7 +718,7 @@ function foldBySection(qlist) {
                     } else {
                         q.other = fallback;
                     }
-                    q.otherGain = (q.other === fallback) ? 0.2 : 1;
+                    q.otherGain = (q.other === fallback) ? 0.15 : 0.9;
                 }
             }
         });
@@ -532,6 +745,7 @@ function allReady() {
         q1.section = getSection(q1);
     });
     prepareLoopCandidates(curTrack);
+    canonLoopCandidates = [];
 
     var lastBeat = masterQs[masterQs.length - 1];
     var remaining = Math.max(trackDuration - lastBeat.start, 0.1);
@@ -551,6 +765,18 @@ function allReady() {
             foldBySection(masterQs);
         } else {
             augmentCanonNeighbors(masterQs, curTrack.analysis.canon_alignment);
+            // Enrich overlay around mid-track for more visible musical connections
+            enrichOverlayConnections(masterQs, {
+                spacing: 16,
+                maxRun: 4,
+                midStartFrac: 0.22,
+                midEndFrac: 0.88,
+                maxDistance: 70,
+                jitter: 4,
+                minAbsOffset: 5
+            });
+            // Smooth mapping to avoid rapid back-and-forth and tiny offsets
+            smoothCanonMapping(masterQs, { windowSize: 7, minAbsOffset: 5, minDwell: 4 });
         }
     } else {
         _.each(masterQs, function(q) {
@@ -1016,6 +1242,104 @@ function createTile(which, q, x, y, width, height) {
     return tile;
 }
 
+function collectVisualizationLoops(limit) {
+    var edges = [];
+    if (canonLoopCandidates && canonLoopCandidates.length) {
+        _.each(canonLoopCandidates, function(loop) {
+            if (!loop) {
+                return;
+            }
+            var src = loop.source_start;
+            var dst = loop.target_start;
+            var sim = (typeof loop.similarity === "number") ? loop.similarity : 0;
+            if (typeof src === "number" && typeof dst === "number" && src !== dst) {
+                edges.push({ source: src, target: dst, similarity: sim });
+            }
+        });
+    } else {
+        _.each(serverLoopCandidateMap, function(entries, key) {
+            var src = parseInt(key, 10);
+            if (isNaN(src)) {
+                return;
+            }
+            _.each(entries, function(entry) {
+                if (!entry) {
+                    return;
+                }
+                var dst = entry.target;
+                var sim = (typeof entry.similarity === "number") ? entry.similarity : 0;
+                if (typeof dst === "number" && src !== dst) {
+                    edges.push({ source: src, target: dst, similarity: sim });
+                }
+            });
+        });
+    }
+    edges = _.filter(edges, function(edge) {
+        return edge.source >= 0 && edge.target >= 0;
+    });
+    edges = _.sortBy(edges, function(edge) { return -edge.similarity; });
+    if (limit && edges.length > limit) {
+        edges = edges.slice(0, limit);
+    }
+    return edges;
+}
+
+function drawLoopConnections(qlist, edges) {
+    clearLoopPaths();
+    if (!edges || !edges.length) {
+        return;
+    }
+    var TW = W - hPad;
+    var baseY = H + 30;
+    var maxSpan = 1;
+    var normalized = [];
+    _.each(edges, function(edge) {
+        if (edge.source >= qlist.length || edge.target >= qlist.length) {
+            return;
+        }
+        var qSrc = qlist[edge.source];
+        var qDst = qlist[edge.target];
+        if (!qSrc || !qDst) {
+            return;
+        }
+        var span = Math.abs(edge.target - edge.source);
+        if (span > maxSpan) {
+            maxSpan = span;
+        }
+        normalized.push({
+            sourceBeat: qSrc,
+            targetBeat: qDst,
+            similarity: (typeof edge.similarity === "number") ? edge.similarity : 0,
+            span: span
+        });
+    });
+    if (!normalized.length) {
+        return;
+    }
+    maxSpan = Math.max(1, maxSpan);
+    _.each(normalized, function(info, idx) {
+        var qSrc = info.sourceBeat;
+        var qDst = info.targetBeat;
+        var x1 = hPad + TW * qSrc.start / trackDuration;
+        var x2 = hPad + TW * qDst.start / trackDuration;
+        var y = H - 6;
+        var spanRatio = info.span / maxSpan;
+        var arcHeight = baseY + 40 + spanRatio * 140 + (idx % 6) * 14;
+        var cx = (x1 + x2) / 2;
+        var pathString = "M" + x1 + " " + y + " S " + cx + " " + arcHeight + " " + x2 + " " + y;
+        var path = paper.path(pathString);
+        var simNorm = Math.max(0, Math.min(1, (info.similarity + 1) / 2));
+        var strokeWidth = 1.4 + simNorm * 2.6;
+        var opacity = 0.18 + simNorm * 0.55;
+        path.attr({
+            stroke: "#6B8AF0",
+            "stroke-width": strokeWidth,
+            "stroke-opacity": opacity
+        });
+        loopPaths.push(path);
+    });
+}
+
 var vPad = 20;
 var hPad = 20;
 
@@ -1025,6 +1349,7 @@ function createTiles(qlist) {
     var GH = H - vPad * 2;
     var HB = H - vPad;
     var TW = W - hPad;
+    clearLoopPaths();
 
     for (var i = 0; i < qlist.length; i++) {
         var q = qlist[i];
@@ -1035,6 +1360,9 @@ function createTiles(qlist) {
     }
     if (mode === "canon") {
         drawConnections(qlist);
+    } else if (mode === "jukebox" || mode === "eternal") {
+        var loopEdges = collectVisualizationLoops(80);
+        drawLoopConnections(qlist, loopEdges);
     }
     updateCursors(qlist[0]);
     return tiles;
@@ -1265,16 +1593,43 @@ function createCanonDriver(player) {
     return {
         start: function() {
             resetTileColors(masterQs);
-            // If the analysis provides a recommended start_index, prefer it
+            // Prefer server-recommended start_index; otherwise start of section 0 on a bar boundary
             var startIdx = 0;
             try {
                 if (curTrack && curTrack.analysis && curTrack.analysis.canon_alignment) {
-                    var si = curTrack.analysis.canon_alignment.start_index;
-                    if (typeof si === "number" && si >= 0 && si < masterQs.length) {
-                        startIdx = si;
+                    var align = curTrack.analysis.canon_alignment;
+                    var si = align.start_index;
+                    var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
+                    var beats = masterQs || [];
+                    // clamp recommended start if it’s too deep into the song
+                    var maxStartTime = Math.min(45, duration * 0.25);
+                    if (typeof si === "number" && si >= 0 && si < beats.length) {
+                        var siTime = beats[si].start || 0;
+                        if (siTime <= maxStartTime) {
+                            startIdx = si;
+                        }
+                    }
+                    if (startIdx === 0 && align && align.pair_similarity && align.similarity_threshold !== undefined) {
+                        var thr = align.similarity_threshold;
+                        for (var i = 0; i < beats.length; i++) {
+                            if (beats[i].section === 0 && beats[i].indexInParent === 0) {
+                                var ok = (i < align.pair_similarity.length) ? (align.pair_similarity[i] >= thr) : true;
+                                if (ok && beats[i].start <= maxStartTime) { startIdx = i; break; }
+                            }
+                        }
                     }
                 }
             } catch (e) {}
+            if (startIdx === 0 && masterQs && masterQs.length) {
+                // find first beat in section 0 that aligns like a downbeat (indexInParent==0) if available
+                for (var i = 0; i < masterQs.length; i++) {
+                    var q = masterQs[i];
+                    if (q && q.section === 0 && q.indexInParent === 0) {
+                        startIdx = i;
+                        break;
+                    }
+                }
+            }
             curQ = startIdx;
             running = true;
             process();
@@ -1322,25 +1677,15 @@ function createJukeboxDriver(player, options) {
     var currentIndex = 0;
     var running = false;
     var mtime = $("#mtime");
-    // Encourage earlier and more frequent musical jumps
-    var baseJumpProbability = (typeof options.baseJumpProbability === "number") ? options.baseJumpProbability : 0.30;
-    var jumpCooldown = 0;
-    var MIN_INDEX_GAP = 3;
-    var recentHistory = [];
-    var initialBeats = masterQs ? masterQs.length : 0;
-    var HISTORY_LIMIT = initialBeats ? Math.max(12, Math.floor(initialBeats * 0.04)) : 12;
-    var HISTORY_GAP = initialBeats ? Math.max(6, Math.floor(initialBeats * 0.015)) : 6;
-    // Loop before playing the whole track: default warmup is zero
-    var warmupBeatsOption = Object.prototype.hasOwnProperty.call(options, "warmupBeats") ? options.warmupBeats : 0;
-    var warmupBeats = warmupBeatsOption || 0;
-    var warmupCountdown = 0;
     var modeName = options.modeName || "jukebox";
-
-    function resetWarmup() {
-        warmupBeats = (typeof warmupBeatsOption === "number") ? warmupBeatsOption : 0;
-        warmupBeats = Math.max(0, Math.floor(warmupBeats));
-        warmupCountdown = warmupBeats;
-    }
+    var minLoopBeats = Math.max(4, options.minLoopBeats || 12);
+    var maxSequentialBeats = Math.max(minLoopBeats + 4, options.maxSequentialBeats || minLoopBeats * 3);
+    var loopThreshold = (typeof options.loopThreshold === "number") ? options.loopThreshold : 0.55;
+    var loopChoices = [];
+    var loopGraph = {};
+    var loopHistory = [];
+    var LOOP_HISTORY_LIMIT = 8;
+    var beatsUntilJump = 0;
 
     function stop() {
         running = false;
@@ -1351,100 +1696,258 @@ function createJukeboxDriver(player, options) {
         pulseNotes(baseNoteStrength);
     }
 
-    function remember(index) {
-        recentHistory.push(index);
-        if (recentHistory.length > HISTORY_LIMIT) {
-            recentHistory.shift();
+    function randomBetween(min, max) {
+        if (max <= min) {
+            return min;
         }
+        return min + Math.floor(Math.random() * (max - min + 1));
     }
 
-    function isRecentlyVisited(index) {
-        for (var i = 0; i < recentHistory.length; i++) {
-            if (Math.abs(recentHistory[i] - index) <= HISTORY_GAP) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function pickNeighbor(q) {
-        if (!q.goodNeighbors || q.goodNeighbors.length === 0) {
+    function normalizeLoop(loop) {
+        if (!loop) {
             return null;
         }
-        var candidates = [];
-        var totalWeight = 0;
-        for (var i = 0; i < q.goodNeighbors.length; i++) {
-            var entry = q.goodNeighbors[i];
-            var beat = entry.beat;
-            if (!beat || beat.which === q.which) {
-                continue;
-            }
-            var deltaIndex = Math.abs(beat.which - q.which);
-            if (deltaIndex < MIN_INDEX_GAP) {
-                continue;
-            }
-            var weight = 1 / Math.pow(Math.max(entry.distance, 8), 0.6);
-            if (q.section !== undefined && beat.section !== undefined && q.section === beat.section) {
-                weight *= 1.6;
-            }
-            if (isRecentlyVisited(beat.which)) {
-                weight *= 0.35;
-            }
-            if (weight <= 0) {
-                continue;
-            }
-            totalWeight += weight;
-            candidates.push({ which: beat.which, weight: weight });
-        }
-        if (candidates.length === 0 || totalWeight <= 0) {
+        var src = Math.max(0, Math.floor(loop.source_start));
+        var dst = Math.max(0, Math.floor(loop.target_start));
+        if (src === dst || src >= masterQs.length || dst >= masterQs.length) {
             return null;
         }
-        var target = Math.random() * totalWeight;
-        var runningWeight = 0;
-        for (var j = 0; j < candidates.length; j++) {
-            runningWeight += candidates[j].weight;
-            if (runningWeight >= target) {
-                return candidates[j].which;
-            }
+        var span = Math.abs(src - dst);
+        if (span < minLoopBeats) {
+            return null;
         }
-        return candidates[candidates.length - 1].which;
+        var sim = (typeof loop.similarity === "number") ? loop.similarity : 0;
+        return {
+            source_start: src,
+            target_start: dst,
+            similarity: sim,
+            span: span
+        };
     }
 
-    function chooseNext(q) {
-        var sequential = q.next ? q.next.which : 0;
-        if (sequential >= masterQs.length) {
-            sequential = 0;
+    function registerEdge(src, dst, similarity, span) {
+        if (src < 0 || dst < 0 || src >= masterQs.length || dst >= masterQs.length || src === dst) {
+            return;
         }
-        if (warmupCountdown > 0) {
-            warmupCountdown -= 1;
-            return sequential;
+        if (!loopGraph[src]) {
+            loopGraph[src] = [];
         }
-        if (jumpCooldown > 0) {
-            jumpCooldown -= 1;
-            return sequential;
+        var sameSection = false;
+        try {
+            var s1 = masterQs[src] ? masterQs[src].section : null;
+            var s2 = masterQs[dst] ? masterQs[dst].section : null;
+            sameSection = (s1 !== null && s2 !== null && s1 === s2);
+        } catch (e) {}
+        loopGraph[src].push({
+            target: dst,
+            similarity: similarity,
+            span: span,
+            sameSection: sameSection
+        });
+    }
+
+    function collectLoopEdgesFromServer(threshold, minBeats) {
+        var edges = [];
+        _.each(serverLoopCandidateMap, function(entries, key) {
+            var src = parseInt(key, 10);
+            if (isNaN(src)) {
+                return;
+            }
+            _.each(entries, function(entry) {
+                if (!entry) {
+                    return;
+                }
+                var dst = entry.target;
+                if (typeof dst !== "number" || dst < 0 || dst >= masterQs.length) {
+                    return;
+                }
+                var sim = (typeof entry.similarity === "number") ? entry.similarity : 0;
+                if (sim < threshold) {
+                    return;
+                }
+                var span = Math.abs(src - dst);
+                if (span < minBeats) {
+                    return;
+                }
+                edges.push({
+                    source_start: src,
+                    target_start: dst,
+                    similarity: sim,
+                    span: span
+                });
+            });
+        });
+        var dedup = {};
+        var results = [];
+        _.each(edges, function(edge) {
+            var key = edge.source_start + ":" + edge.target_start;
+            if (!dedup[key]) {
+                dedup[key] = true;
+                results.push(edge);
+            }
+        });
+        return results;
+    }
+
+    function collectFallbackLoops(qlist, minBeats) {
+        var loops = [];
+        var seen = {};
+        _.each(qlist, function(q) {
+            if (!q.goodNeighbors || !q.goodNeighbors.length) {
+                return;
+            }
+            _.each(q.goodNeighbors, function(entry) {
+                if (!entry || !entry.beat) {
+                    return;
+                }
+                var src = q.which;
+                var dst = entry.beat.which;
+                if (typeof src !== "number" || typeof dst !== "number") {
+                    return;
+                }
+                if (dst >= src) {
+                    return;
+                }
+                var span = src - dst;
+                if (span < minBeats) {
+                    return;
+                }
+                var key = src + ":" + dst;
+                if (seen[key]) {
+                    return;
+                }
+                seen[key] = true;
+                var distance = (typeof entry.distance === "number") ? entry.distance : 180;
+                var sim = 1 - Math.min(1, distance / 240);
+                loops.push({
+                    source_start: src,
+                    target_start: dst,
+                    similarity: sim,
+                    span: span
+                });
+            });
+        });
+        loops.sort(function(a, b) {
+            return b.similarity - a.similarity;
+        });
+        return loops;
+    }
+
+    function rebuildLoopChoices() {
+        loopGraph = {};
+        var loops = [];
+        if (canonLoopCandidates && canonLoopCandidates.length) {
+            _.each(canonLoopCandidates, function(loop) {
+                var normalized = normalizeLoop(loop);
+                if (normalized && normalized.similarity >= loopThreshold) {
+                    loops.push(normalized);
+                    registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
+                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
+                }
+            });
         }
-        var candidateIndex = pickNeighbor(q);
-        if (candidateIndex === null) {
-            return sequential;
+        if (!loops.length) {
+            _.each(collectLoopEdgesFromServer(loopThreshold, minLoopBeats), function(loop) {
+                var normalized = normalizeLoop(loop);
+                if (normalized) {
+                    loops.push(normalized);
+                    registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
+                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
+                }
+            });
         }
-        var probability = baseJumpProbability;
-        if (q.goodNeighbors && q.goodNeighbors.length > 0) {
-            var bestDistance = q.goodNeighbors[0].distance;
-            var qualityFactor = Math.max(0, Math.min(1, (180 - bestDistance) / 180));
-            // Ensure at least the configured base probability for healthy jumping
-            probability = Math.max(baseJumpProbability, 0.08 + 0.18 * qualityFactor);
+        if (!loops.length) {
+            _.each(collectFallbackLoops(masterQs, minLoopBeats), function(loop) {
+                var normalized = normalizeLoop(loop);
+                if (normalized) {
+                    loops.push(normalized);
+                    registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
+                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
+                }
+            });
         }
-        if (q.next && q.next.section !== undefined && q.section !== undefined && q.next.section !== q.section) {
-            probability *= 0.5;
+        loopChoices = loops;
+        loopHistory = [];
+        scheduleNextJump(true);
+    }
+
+    function scheduleNextJump(force) {
+        var minB = minLoopBeats;
+        var maxB = maxSequentialBeats;
+        var upper = force ? Math.max(minB + 2, Math.floor((minB + maxB) / 2)) : maxB;
+        beatsUntilJump = randomBetween(minB, upper);
+    }
+
+    function selectJumpCandidate(src) {
+        var candidates = loopGraph[src];
+        if (!candidates || !candidates.length) {
+            return null;
         }
-        if (candidateIndex !== null && isRecentlyVisited(candidateIndex)) {
-            probability *= 0.3;
+        var filtered = _.filter(candidates, function(edge) {
+            for (var i = loopHistory.length - 1; i >= Math.max(0, loopHistory.length - 3); i--) {
+                var hist = loopHistory[i];
+                if (!hist) {
+                    continue;
+                }
+                if ((hist.source === src && hist.target === edge.target) ||
+                    (hist.source === edge.target && hist.target === src)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (!filtered.length) {
+            filtered = candidates.slice(0);
         }
-        if (Math.random() < probability) {
-            jumpCooldown = 2;
-            return candidateIndex;
+        var weights = [];
+        var total = 0;
+        _.each(filtered, function(edge) {
+            var simNorm = Math.max(0, Math.min(1, (edge.similarity + 1) / 2));
+            var spanNorm = Math.min(1, Math.max(0.25, edge.span / (minLoopBeats * 1.5)));
+            var sectionBonus = edge.sameSection ? 0.2 : -0.05;
+            var weight = 0.35 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
+            total += weight;
+            weights.push(weight);
+        });
+        if (total <= 0) {
+            return filtered[Math.floor(Math.random() * filtered.length)];
         }
-        return sequential;
+        var pick = Math.random() * total;
+        for (var i = 0; i < filtered.length; i++) {
+            pick -= weights[i];
+            if (pick <= 0) {
+                return filtered[i];
+            }
+        }
+        return filtered[filtered.length - 1];
+    }
+
+    function advanceSequential() {
+        currentIndex += 1;
+        if (currentIndex >= masterQs.length) {
+            currentIndex = 0;
+        }
+    }
+
+    function advanceIndex() {
+        if (!masterQs || !masterQs.length) {
+            return;
+        }
+        beatsUntilJump -= 1;
+        if (beatsUntilJump <= 0) {
+            var jump = selectJumpCandidate(currentIndex);
+            if (jump) {
+                loopHistory.push({ source: currentIndex, target: jump.target });
+                if (loopHistory.length > LOOP_HISTORY_LIMIT) {
+                    loopHistory.shift();
+                }
+                currentIndex = jump.target;
+                scheduleNextJump(false);
+                return;
+            }
+            scheduleNextJump(true);
+        }
+        advanceSequential();
     }
 
     function process() {
@@ -1454,38 +1957,25 @@ function createJukeboxDriver(player, options) {
         var q = masterQs[currentIndex];
         var delay = player.playQ(q);
         q.tile.highlight();
+        if (q.other && q.other.tile) {
+            q.other.tile.highlight2();
+        }
         updateCursors(q);
         mtime.text(fmtTime(q.start));
         pulseNotes(q.median_volume || q.volume || baseNoteStrength);
-        remember(currentIndex);
-        var nextIndex = chooseNext(q);
-        if (nextIndex < 0 || nextIndex >= masterQs.length) {
-            nextIndex = 0;
-        }
-        currentIndex = nextIndex;
         if (delay <= 0 || isNaN(delay)) {
             delay = q.duration;
         }
+        advanceIndex();
         setTimeout(function() { process(); }, 1000 * delay);
     }
 
     return {
         start: function() {
             resetTileColors(masterQs);
-            // Prefer starting on analysis-provided start_index when available
-            var startIdx = 0;
-            try {
-                if (curTrack && curTrack.analysis && curTrack.analysis.canon_alignment) {
-                    var si = curTrack.analysis.canon_alignment.start_index;
-                    if (typeof si === "number" && si >= 0 && si < masterQs.length) {
-                        startIdx = si;
-                    }
-                }
-            } catch (e) {}
-            currentIndex = startIdx;
+            currentIndex = 0;
+            rebuildLoopChoices();
             running = true;
-            resetWarmup();
-            recentHistory = [];
             process();
             setURL();
             $("#play").text("Stop");
@@ -1495,8 +1985,8 @@ function createJukeboxDriver(player, options) {
 
         resume: function() {
             resetTileColors(masterQs);
+            rebuildLoopChoices();
             running = true;
-            recentHistory = recentHistory.slice(-Math.max(6, HISTORY_LIMIT / 2));
             process();
             setURL();
             $("#play").text("Stop");
@@ -1522,6 +2012,8 @@ function createJukeboxDriver(player, options) {
                 updateCursors(q);
                 mtime.text(fmtTime(q.start));
                 pulseNotes(q.median_volume || q.volume || baseNoteStrength);
+            } else {
+                scheduleNextJump(true);
             }
         }
     };
@@ -1529,13 +2021,16 @@ function createJukeboxDriver(player, options) {
 
 function Driver(player) {
     if (mode === "jukebox") {
-        return createJukeboxDriver(player);
+        return createJukeboxDriver(player, {
+            modeName: "jukebox",
+            minLoopBeats: 12,
+            loopThreshold: 0.55
+        });
     } else if (mode === "eternal") {
         return createJukeboxDriver(player, {
-            // Loop early; keep jumps slightly more conservative than pure jukebox
-            warmupBeats: 0,
-            baseJumpProbability: 0.22,
-            modeName: "eternal"
+            modeName: "eternal",
+            minLoopBeats: 8,
+            loopThreshold: 0.5
         });
     }
     return createCanonDriver(player);

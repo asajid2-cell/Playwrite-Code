@@ -216,15 +216,32 @@ function createJRemixer(context, jquery) {
             var deltaTime = 0;
             var mainGain = context.createGain();
             var otherGain = context.createGain();
+            var mainPanner = null;
+            var otherPanner = null;
             var skewDelta = 0;
             var maxSkewDelta = .05;
             var ocurAudioSource = null;
 
-            mainGain.connect(context.destination);
-            otherGain.connect(context.destination);
+            if (typeof context.createStereoPanner === "function") {
+                mainPanner = context.createStereoPanner();
+                otherPanner = context.createStereoPanner();
+                try {
+                    mainPanner.pan.value = -0.28;
+                    otherPanner.pan.value = 0.28;
+                } catch (e) {
+                    // ignore failures on platforms without setter
+                }
+                mainGain.connect(mainPanner);
+                mainPanner.connect(context.destination);
+                otherGain.connect(otherPanner);
+                otherPanner.connect(context.destination);
+            } else {
+                mainGain.connect(context.destination);
+                otherGain.connect(context.destination);
+            }
 
             mainGain.gain.value = masterGain;
-            otherGain.gain.value = 1 - masterGain;
+            otherGain.gain.value = 0.0;
 
             function playQuantumWithDurationSimple(when, q, dur, gain, channel) {
                 var now = context.currentTime;
@@ -280,7 +297,10 @@ function createJRemixer(context, jquery) {
                 var now = context.currentTime - deltaTime;
                 var delta = now - q.start;
 
-                var targetOther = (1 - masterGain) * q.otherGain;
+                var normalizedOther = Math.max(0, Math.min(1, q.otherGain));
+                var targetOther = Math.max(0, Math.min(1, (1 - masterGain) * normalizedOther));
+                // subtle main ducking to reduce muddiness when overlay is strong
+                var targetMain = Math.max(0.0, Math.min(1.0, masterGain * (1 - 0.18 * normalizedOther)));
                 // smooth ramp on other gain at (re)start to reduce clicks and align feel
                 if (curQ == null || curQ.other.next != q.other || Math.abs(skewDelta) > maxSkewDelta) {
                     skewDelta = 0;
@@ -295,11 +315,24 @@ function createJRemixer(context, jquery) {
                         // start low and ramp up quickly to target
                         otherGain.gain.setValueAtTime(0.0001, now);
                         otherGain.gain.exponentialRampToValueAtTime(Math.max(0.0002, targetOther), now + Math.min(0.08, Math.max(0.02, q.duration * 0.25)));
+                        // adjust main gain alongside overlay rise
+                        mainGain.gain.cancelScheduledValues(now);
+                        mainGain.gain.setTargetAtTime(targetMain, now, Math.max(0.02, q.duration * 0.25));
                     } catch (e) {
                         otherGain.gain.value = targetOther;
+                        mainGain.gain.value = targetMain;
                     }
                 } else {
-                    otherGain.gain.value = targetOther;
+                    try {
+                        var now2 = context.currentTime;
+                        otherGain.gain.cancelScheduledValues(now2);
+                        otherGain.gain.setTargetAtTime(Math.max(0.0002, targetOther), now2, Math.max(0.02, q.duration * 0.3));
+                        mainGain.gain.cancelScheduledValues(now2);
+                        mainGain.gain.setTargetAtTime(targetMain, now2, Math.max(0.02, q.duration * 0.3));
+                    } catch (e) {
+                        otherGain.gain.value = targetOther;
+                        mainGain.gain.value = targetMain;
+                    }
                 }
                 skewDelta += q.duration - q.other.duration;
                 curQ = q;

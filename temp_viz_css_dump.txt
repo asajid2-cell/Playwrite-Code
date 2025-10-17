@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     --color-card: rgba(40, 5, 15, 0.92);
     --color-card-soft: rgba(55, 9, 19, 0.75);
     --color-accent: #E8B4B8;
@@ -45,7 +45,7 @@
     overflow: hidden;
     background: rgba(20, 3, 9, 0.42);
     box-shadow: inset 0 0 60px rgba(232, 180, 184, 0.08);
-    transition: box-shadow 0.5s ease, opacity 0.5s ease, transform 0.5s ease;
+    transition: box-shadow 0.5s ease, background 0.5s ease, transform 0.5s ease;
 }
 
 .music-frame::before {

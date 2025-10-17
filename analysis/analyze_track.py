@@ -24,8 +24,8 @@ SILENCE_DB = -60.0
 MIN_SECTION_DURATION = 2.0
 
 CANON_CONTEXT_BEATS = 5
-CANON_SIMILARITY_THRESHOLD = 0.50
-CANON_MIN_PHASE_ALIGNMENT = 0.70
+CANON_SIMILARITY_THRESHOLD = 0.58
+CANON_MIN_PHASE_ALIGNMENT = 0.80
 CANON_MIN_PAIRS = 6
 CANON_TOP_CANDIDATES = 8
 
@@ -1035,14 +1035,31 @@ def compute_canon_alignment(
     # Choose a recommended start beat on a bar boundary (phase==0) that maximizes similarity
     start_index = 0
     if n_beats:
-        candidates_idx = [i for i in range(n_beats) if contexts[i].phase == 0]
-        if not candidates_idx:
-            candidates_idx = list(range(n_beats))
-        best_i = max(
-            candidates_idx,
-            key=lambda i: float(pair_similarity[i]) if i < len(pair_similarity) else 0.0,
-        )
-        start_index = int(best_i)
+        threshold = float(similarity_threshold)
+        phase_candidates = [
+            i
+            for i in range(n_beats)
+            if contexts[i].phase == 0 and float(pair_similarity[i]) >= threshold
+        ]
+        if phase_candidates:
+            start_index = int(min(phase_candidates))
+        else:
+            early_candidates = [
+                i for i in range(n_beats) if float(pair_similarity[i]) >= threshold
+            ]
+            if early_candidates:
+                start_index = int(min(early_candidates))
+            else:
+                candidates_idx = [i for i in range(n_beats) if contexts[i].phase == 0]
+                if not candidates_idx:
+                    candidates_idx = list(range(n_beats))
+                best_i = max(
+                    candidates_idx,
+                    key=lambda i: float(pair_similarity[i])
+                    if i < len(pair_similarity)
+                    else 0.0,
+                )
+                start_index = int(best_i)
 
     # No additional injections; keep the canon alignment strictly data-driven
 

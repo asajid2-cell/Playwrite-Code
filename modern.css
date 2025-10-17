@@ -238,7 +238,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     position: relative;
     z-index: 1;
     width: min(1400px, 96vw);
-    margin: 0 clamp(20px, 3vw, 56px) 0 auto;
+    margin: 0 auto;
     padding: clamp(12px, 2.4vw, 24px) clamp(14px, 3vw, 36px);
     display: grid;
     grid-template-columns: minmax(260px, 0.8fr) minmax(680px, 1.4fr);
@@ -557,7 +557,9 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .footer {
-    text-align: center;
+    justify-self: start;
+    grid-column: 1 / -1;
+    text-align: left;
     padding-top: 16px;
     color: rgba(232, 180, 184, 0.5);
     font-size: 0.78rem;

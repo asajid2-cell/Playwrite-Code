@@ -100,6 +100,41 @@
                 </header>
                 <div class="viz-body">
                     <div class="viz-stage">
+                        <div id="canon-sidebar" class="canon-sidebar hidden">
+                            <div id="canon-controls" class="viz-tuning hidden">
+                                <button type="button" id="canon-settings-toggle" class="viz-button ghost">Canon Controls</button>
+                                <button type="button" id="canon-regenerate" class="viz-button ghost">Regenerate</button>
+                                <button type="button" id="canon-reset" class="viz-button ghost">Reset</button>
+                            </div>
+                            <div id="canon-settings-panel" class="canon-settings-panel hidden" aria-hidden="true">
+                                <div class="canon-setting-row">
+                                    <label for="canon-min-offset">Min Offset</label>
+                                    <input type="range" id="canon-min-offset" min="1" max="32" step="1" value="8">
+                                    <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
+                                </div>
+                                <div class="canon-setting-row">
+                                    <label for="canon-max-offset">Max Offset</label>
+                                    <input type="range" id="canon-max-offset" min="8" max="96" step="1" value="64">
+                                    <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
+                                </div>
+                                <div class="canon-setting-row">
+                                    <label for="canon-dwell">Hold Duration</label>
+                                    <input type="range" id="canon-dwell" min="1" max="16" step="1" value="6">
+                                    <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
+                                </div>
+                                <div class="canon-setting-row">
+                                    <label for="canon-density">Texture</label>
+                                    <input type="range" id="canon-density" min="1" max="5" step="1" value="2">
+                                    <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
+                                </div>
+                                <div class="canon-setting-row">
+                                    <label for="canon-variation">Variation</label>
+                                    <input type="range" id="canon-variation" min="0" max="6" step="1" value="2">
+                                    <span class="canon-setting-value" data-setting-display="variation">2</span>
+                                </div>
+                                <p class="canon-settings-note">Adjust the canon voice in real-time. Tap Regenerate to explore alternate overlays without reloading your track.</p>
+                            </div>
+                        </div>
                         <div class="viz-status" id="status-panel"></div>
                         <div id="error"></div>
                         <div id="tiles" class="tiles-canvas"></div>

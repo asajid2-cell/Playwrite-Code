@@ -26,6 +26,14 @@ var isTrackReady = false;
 var serverLoopCandidateMap = {};
 var canonLoopCandidates = [];
 var loopPaths = [];
+var canonSettings = {
+    minOffsetBeats: 8,
+    maxOffsetBeats: 64,
+    dwellBeats: 6,
+    density: 2,
+    variation: 2
+};
+var canonBaseAssignments = [];
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
 
@@ -127,7 +135,7 @@ var yesSims = 0
 
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
-    var maxNeighbors = 8;
+    var maxNeighbors = 20;
     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
     var MIN_INDEX_SPREAD = 3;
 
@@ -211,7 +219,7 @@ function calculateNearestNeighborsForQuantum(list, q1) {
             return n.distance <= qualityThreshold && n.beat && n.beat.section === q1.section;
         });
         if (filtered.length === 0) {
-            filtered = neighbors.slice(0, Math.min(3, neighbors.length));
+            filtered = neighbors.slice(0, Math.min(6, neighbors.length));
         }
         q1.goodNeighbors = _.sortBy(filtered, function(n) { return n.distance; });
     } else {
@@ -425,6 +433,151 @@ function applyCanonAlignment(qlist, alignment) {
 // - Only within the middle portion of the song
 // - Choose neighbors within the same section and small distance
 // - Maintain a constant index offset across each short run to preserve timing
+function storeBaseCanonMapping(qlist) {
+    canonBaseAssignments = [];
+    if (!qlist) {
+        return;
+    }
+    _.each(qlist, function(q) {
+        if (!q) {
+            return;
+        }
+        canonBaseAssignments[q.which] = {
+            otherIndex: (q.other && typeof q.other.which === "number") ? q.other.which : null,
+            gain: (typeof q.otherGain === "number") ? q.otherGain : 0
+        };
+    });
+}
+
+function restoreBaseCanonMapping(qlist) {
+    if (!canonBaseAssignments || !canonBaseAssignments.length) {
+        return;
+    }
+    _.each(qlist, function(q) {
+        if (!q) {
+            return;
+        }
+        var base = canonBaseAssignments[q.which];
+        if (!base) {
+            return;
+        }
+        if (base.otherIndex !== null && base.otherIndex >= 0 && base.otherIndex < qlist.length) {
+            q.other = qlist[base.otherIndex];
+        } else {
+            q.other = q;
+        }
+        q.otherGain = base.gain;
+    });
+}
+
+function refreshCanonVisualization() {
+    if (!paper || !masterQs || !masterQs.length) {
+        return;
+    }
+    _.each(masterQs, function(q) {
+        if (q && q.ppath && typeof q.ppath.remove === "function") {
+            q.ppath.remove();
+        }
+        if (q) {
+            q.ppath = null;
+        }
+    });
+    if (mode === "canon") {
+        drawConnections(masterQs);
+    }
+}
+
+function regenerateCanonMapping(options) {
+    if (mode !== "canon" || !masterQs || !masterQs.length) {
+        return;
+    }
+    options = options || {};
+    restoreBaseCanonMapping(masterQs);
+    var minOffset = Math.max(1, Math.floor(canonSettings.minOffsetBeats || 1));
+    var maxOffset = Math.max(minOffset + 1, Math.floor(canonSettings.maxOffsetBeats || (masterQs.length * 0.6)));
+    maxOffset = Math.min(maxOffset, masterQs.length - 1);
+    var dwell = Math.max(2, Math.floor(canonSettings.dwellBeats || 4));
+    var density = Math.max(1, Math.floor(canonSettings.density || 3));
+    var variation = Math.max(0, Math.floor(canonSettings.variation || 0));
+    var spacing = Math.max(8, Math.round(36 / density) + 12);
+    var runLen = Math.max(2, Math.min(8, density + 2));
+    var jitter = Math.min(10, variation + 2);
+
+    ensureMinimumOffset(masterQs, minOffset, maxOffset);
+    enrichOverlayConnections(masterQs, {
+        spacing: spacing,
+        maxRun: runLen,
+        midStartFrac: 0.22,
+        midEndFrac: 0.88,
+        maxDistance: 70,
+        jitter: jitter,
+        minAbsOffset: minOffset,
+        maxAbsOffset: maxOffset
+    });
+    smoothCanonMapping(masterQs, {
+        windowSize: Math.min(15, 7 + variation),
+        minAbsOffset: minOffset,
+        minDwell: dwell,
+        maxAbsOffset: maxOffset
+    });
+    assignNormalizedVolumes(masterQs);
+    refreshCanonVisualization();
+    if (typeof window.onCanonRegenerated === "function") {
+        window.onCanonRegenerated({
+            minOffset: minOffset,
+            maxOffset: maxOffset,
+            dwell: dwell,
+            density: density,
+            variation: variation
+        });
+    }
+}
+
+function updateCanonSetting(key, value) {
+    if (!canonSettings || key === undefined) {
+        return;
+    }
+    if (key === "minOffsetBeats") {
+        value = Math.max(1, Math.floor(value));
+        canonSettings.minOffsetBeats = value;
+        if (canonSettings.maxOffsetBeats <= value) {
+            canonSettings.maxOffsetBeats = value + 1;
+        }
+    } else if (key === "maxOffsetBeats") {
+        var minLimit = Math.max(2, canonSettings.minOffsetBeats + 1);
+        value = Math.max(minLimit, Math.floor(value));
+        if (masterQs && masterQs.length) {
+            value = Math.min(value, masterQs.length - 1);
+        }
+        canonSettings.maxOffsetBeats = value;
+    } else if (key === "dwellBeats") {
+        canonSettings.dwellBeats = Math.max(1, Math.floor(value));
+    } else if (key === "density") {
+        canonSettings.density = Math.min(6, Math.max(1, Math.floor(value)));
+    } else if (key === "variation") {
+        canonSettings.variation = Math.min(10, Math.max(0, Math.floor(value)));
+    } else {
+        canonSettings[key] = value;
+    }
+    if (mode === "canon" && masterQs && masterQs.length) {
+        regenerateCanonMapping();
+    }
+}
+
+if (typeof window !== "undefined") {
+    window.updateCanonSetting = updateCanonSetting;
+    window.regenerateCanonMappingManually = function() { regenerateCanonMapping(); };
+    window.getCanonSettingsSnapshot = function() {
+        return {
+            minOffsetBeats: canonSettings.minOffsetBeats,
+            maxOffsetBeats: canonSettings.maxOffsetBeats,
+            dwellBeats: canonSettings.dwellBeats,
+            density: canonSettings.density,
+            variation: canonSettings.variation
+        };
+    };
+}
+
 function enrichOverlayConnections(qlist, options) {
     options = options || {};
     if (!qlist || !qlist.length) {
@@ -440,7 +593,8 @@ function enrichOverlayConnections(qlist, options) {
     var maxRun = Math.max(2, options.maxRun || 4);
     var maxJitter = Math.max(0, options.jitter || 3);
     var maxDistance = Math.max(40, options.maxDistance || 60);
-    var minAbsOffset = Math.max(3, options.minAbsOffset || 5);
+    var minAbsOffset = Math.max(1, options.minAbsOffset || 5);
+    var maxAbsOffset = options.maxAbsOffset && options.maxAbsOffset > minAbsOffset ? options.maxAbsOffset : null;
     for (var i = startIdx; i < endIdx; ) {
         var q = qlist[i];
         if (!q) { i += 1; continue; }
@@ -457,6 +611,7 @@ function enrichOverlayConnections(qlist, options) {
                 }
                 var delta = entry.beat.which - q.which;
                 if (Math.abs(delta) < minAbsOffset) { continue; }
+                if (maxAbsOffset !== null && Math.abs(delta) > maxAbsOffset) { continue; }
                 // ensure target index is valid for a short run
                 var runLen = Math.min(maxRun, endIdx - i);
                 if (i + runLen + delta < 0 || i + runLen + delta >= n) {
@@ -494,9 +649,10 @@ function smoothCanonMapping(qlist, options) {
     options = options || {};
     if (!qlist || !qlist.length) { return; }
     var windowSize = Math.max(3, options.windowSize || 7);
-    var minAbsOffset = Math.max(3, options.minAbsOffset || 5);
+    var minAbsOffset = Math.max(1, options.minAbsOffset || 5);
     var minDwell = Math.max(2, options.minDwell || 4);
     var preferSameSection = true;
+    var maxAbsOffset = options.maxAbsOffset && options.maxAbsOffset > minAbsOffset ? options.maxAbsOffset : null;
 
     function runningMedian(arr, idx, w) {
         var half = Math.floor(w / 2);
@@ -526,6 +682,9 @@ function smoothCanonMapping(qlist, options) {
         if (Math.abs(preferred) < minAbsOffset) {
             preferred = preferred >= 0 ? minAbsOffset : -minAbsOffset;
         }
+        if (maxAbsOffset !== null && Math.abs(preferred) > maxAbsOffset) {
+            preferred = preferred >= 0 ? maxAbsOffset : -maxAbsOffset;
+        }
         // Assemble candidates: current, goodNeighbors, plus neighbors list
         var cands = [];
         if (q.other) cands.push({ b: q.other, dist: 0 });
@@ -546,10 +705,18 @@ function smoothCanonMapping(qlist, options) {
             var b = cands[c].b; var d = cands[c].dist;
             var delta = b.which - q.which;
             if (Math.abs(delta) < minAbsOffset) continue;
+            if (maxAbsOffset !== null && Math.abs(delta) > maxAbsOffset) continue;
             if (preferSameSection && q.section !== undefined && b.section !== undefined && q.section !== b.section) continue;
             var deltaCost = Math.abs(delta - preferred);
             var simCost = (typeof d === 'number') ? (d / 200.0) : 1.0;
-            var cost = deltaCost + simCost;
+            var sizeReward = 0;
+            var absDelta = Math.abs(delta);
+            if (maxAbsOffset !== null && maxAbsOffset > 0) {
+                sizeReward = Math.min(0.35, absDelta / maxAbsOffset * 0.3);
+            } else {
+                sizeReward = Math.min(0.25, absDelta / Math.max(8, minAbsOffset * 2) * 0.25);
+            }
+            var cost = deltaCost + simCost - sizeReward;
             if (!best || cost < best.cost) { best = { beat: b, cost: cost, delta: delta }; }
         }
         // Dwell/hysteresis: resist changing offset too often
@@ -575,6 +742,79 @@ function smoothCanonMapping(qlist, options) {
             lastDelta = best.delta;
         }
     }
+}
+
+function ensureMinimumOffset(qlist, minAbsOffset, maxAbsOffset) {
+    if (!qlist || !qlist.length) {
+        return;
+    }
+    var n = qlist.length;
+    minAbsOffset = Math.max(1, minAbsOffset || 1);
+    maxAbsOffset = Math.max(minAbsOffset + 1, maxAbsOffset || Math.max(2, Math.floor(n * 0.6)));
+    _.each(qlist, function(q) {
+        if (!q) { return; }
+        var currentIdx = q.other && typeof q.other.which === "number" ? q.other.which : null;
+        var currentDelta = currentIdx !== null ? currentIdx - q.which : 0;
+        if (currentDelta < 0) {
+            currentDelta += n;
+        }
+        var absDelta = Math.abs(currentDelta);
+        if (absDelta >= minAbsOffset && absDelta <= maxAbsOffset) {
+            return;
+        }
+        var candidate = null;
+        var bestScore = Infinity;
+        function consider(entry, weightPenalty) {
+            if (!entry || !entry.beat) { return; }
+            var idx = entry.beat.which;
+            var delta = idx - q.which;
+            if (delta < 0) { delta += n; }
+            if (delta === 0) { return; }
+            var abs = Math.abs(delta);
+            if (abs < minAbsOffset || abs > maxAbsOffset) { return; }
+            var penalty = weightPenalty || 0;
+            if (typeof entry.distance === 'number') {
+                penalty += entry.distance / 220;
+            }
+            if (q.section !== undefined && entry.beat.section !== undefined && q.section !== entry.beat.section) {
+                penalty += 0.6;
+            }
+            if (penalty < bestScore) {
+                bestScore = penalty;
+                candidate = entry.beat;
+            }
+        }
+        if (q.goodNeighbors) {
+            _.each(q.goodNeighbors, function(entry) { consider(entry, 0); });
+        }
+        if (!candidate && q.neighbors) {
+            _.each(q.neighbors, function(entry) { consider(entry, 0.25); });
+        }
+        if (!candidate) {
+            for (var offset = minAbsOffset; offset <= maxAbsOffset; offset += Math.max(1, Math.round(minAbsOffset / 2))) {
+                var forward = (q.which + offset) % n;
+                var alt = qlist[forward];
+                if (alt) {
+                    consider({ beat: alt, distance: 180 }, 1.0 + offset / 64);
+                }
+                var backward = (q.which - offset);
+                while (backward < 0) {
+                    backward += n;
+                }
+                var altBack = qlist[backward % n];
+                if (altBack) {
+                    consider({ beat: altBack, distance: 180 }, 1.0 + offset / 64);
+                }
+                if (candidate) {
+                    break;
+                }
+            }
+        }
+        if (candidate) {
+            q.other = candidate;
+            q.otherGain = Math.max(0.35, Math.min(0.9, q.otherGain || 0.45));
+        }
+    });
 }
 
 function augmentCanonNeighbors(qlist, alignment) {
@@ -746,6 +986,7 @@ function allReady() {
     });
     prepareLoopCandidates(curTrack);
     canonLoopCandidates = [];
+    canonBaseAssignments = [];
 
     var lastBeat = masterQs[masterQs.length - 1];
     var remaining = Math.max(trackDuration - lastBeat.start, 0.1);
@@ -765,26 +1006,48 @@ function allReady() {
             foldBySection(masterQs);
         } else {
             augmentCanonNeighbors(masterQs, curTrack.analysis.canon_alignment);
-            // Enrich overlay around mid-track for more visible musical connections
-            enrichOverlayConnections(masterQs, {
-                spacing: 16,
-                maxRun: 4,
-                midStartFrac: 0.22,
-                midEndFrac: 0.88,
-                maxDistance: 70,
-                jitter: 4,
-                minAbsOffset: 5
-            });
-            // Smooth mapping to avoid rapid back-and-forth and tiny offsets
-            smoothCanonMapping(masterQs, { windowSize: 7, minAbsOffset: 5, minDwell: 4 });
+        }
+        storeBaseCanonMapping(masterQs);
+        var maxPossible = masterQs && masterQs.length ? Math.max(1, masterQs.length - 1) : 1;
+        if (canonSettings.minOffsetBeats >= maxPossible) {
+            canonSettings.minOffsetBeats = Math.max(1, Math.min(maxPossible - 1, canonSettings.minOffsetBeats));
+        }
+        var autoMaxOffset;
+        if (masterQs && masterQs.length) {
+            var desired = Math.max(2, Math.round(masterQs.length * 0.6));
+            autoMaxOffset = Math.min(maxPossible, Math.max(desired, canonSettings.minOffsetBeats + 1));
+        } else {
+            autoMaxOffset = 32;
+        }
+        canonSettings.maxOffsetBeats = autoMaxOffset;
+        if (canonSettings.minOffsetBeats >= canonSettings.maxOffsetBeats) {
+            canonSettings.minOffsetBeats = Math.max(1, Math.min(canonSettings.maxOffsetBeats - 1, Math.floor(canonSettings.maxOffsetBeats / 2)));
+        }
+        if (mode === "canon") {
+            regenerateCanonMapping({ initial: true });
+            if (typeof window.onCanonTrackReady === "function") {
+                window.onCanonTrackReady({
+                    beats: masterQs.length,
+                    minOffsetBeats: canonSettings.minOffsetBeats,
+                    maxOffsetBeats: canonSettings.maxOffsetBeats
+                });
+            }
+        } else {
+            assignNormalizedVolumes(masterQs);
+            if (typeof window.onCanonTrackReady === "function") {
+                window.onCanonTrackReady(null);
+            }
         }
     } else {
         _.each(masterQs, function(q) {
             q.other = q;
             q.otherGain = 0;
         });
+        assignNormalizedVolumes(masterQs);
+        if (typeof window.onCanonTrackReady === "function") {
+            window.onCanonTrackReady(null);
+        }
     }
-    assignNormalizedVolumes(masterQs);
 
     isTrackReady = true;
     $("#play").prop("disabled", false).text("Play");
@@ -898,6 +1161,9 @@ function setPlayingClass(modeName) {
         baseNoteStrength = 0.1;
     } else {
         baseNoteStrength = 0;
+    }
+    if (typeof window.setCanonUiVisibility === "function") {
+        window.setCanonUiVisibility(modeName === "canon");
     }
     rootStyle.setProperty("--note-strength", baseNoteStrength.toFixed(3));
     var baseAlpha = 0.12 + 0.35 * baseNoteStrength;
@@ -1410,6 +1676,9 @@ function drawConnection(q1, q2, maxDelta) {
     var y = H -4;
     var x2 = hPad + TW * q2.other.start / trackDuration;
     var cx = (x2 - x1) / 2 + x1;
+    if (q1.ppath && typeof q1.ppath.remove === "function") {
+        q1.ppath.remove();
+    }
     var path = 'M' + x1 + ' ' + y + ' S ' + cx + ' ' + cy  + ' ' + x2 + ' ' + y;
     q1.ppath = paper.path(path)
     q1.ppath.attr('stroke', getQuantumColor(q1.other));
@@ -1686,6 +1955,34 @@ function createJukeboxDriver(player, options) {
     var loopHistory = [];
     var LOOP_HISTORY_LIMIT = 8;
     var beatsUntilJump = 0;
+    var recentSections = [];
+    var sectionAnchors = [];
+    var orderedSectionAnchors = [];
+
+    (function initializeSectionAnchors() {
+        if (!masterQs || !masterQs.length) {
+            return;
+        }
+        for (var i = 0; i < masterQs.length; i++) {
+            var beat = masterQs[i];
+            if (!beat) {
+                continue;
+            }
+            var sec = (typeof beat.section === "number") ? beat.section : null;
+            if (sec === null || sec === undefined) {
+                continue;
+            }
+            if (sectionAnchors[sec] === undefined) {
+                sectionAnchors[sec] = beat.which;
+            }
+        }
+        for (var s = 0; s < sectionAnchors.length; s++) {
+            if (typeof sectionAnchors[s] === "number") {
+                orderedSectionAnchors.push(sectionAnchors[s]);
+            }
+        }
+        orderedSectionAnchors.sort(function(a, b) { return a - b; });
+    })();
 
     function stop() {
         running = false;
@@ -1729,6 +2026,9 @@ function createJukeboxDriver(player, options) {
         if (src < 0 || dst < 0 || src >= masterQs.length || dst >= masterQs.length || src === dst) {
             return;
         }
+        if (dst >= src) {
+            return;
+        }
         if (!loopGraph[src]) {
             loopGraph[src] = [];
         }
@@ -1759,6 +2059,9 @@ function createJukeboxDriver(player, options) {
                 }
                 var dst = entry.target;
                 if (typeof dst !== "number" || dst < 0 || dst >= masterQs.length) {
+                    return;
+                }
+                if (dst >= src) {
                     return;
                 }
                 var sim = (typeof entry.similarity === "number") ? entry.similarity : 0;
@@ -1842,7 +2145,6 @@ function createJukeboxDriver(player, options) {
                 if (normalized && normalized.similarity >= loopThreshold) {
                     loops.push(normalized);
                     registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
-                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
                 }
             });
         }
@@ -1852,7 +2154,6 @@ function createJukeboxDriver(player, options) {
                 if (normalized) {
                     loops.push(normalized);
                     registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
-                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
                 }
             });
         }
@@ -1862,12 +2163,33 @@ function createJukeboxDriver(player, options) {
                 if (normalized) {
                     loops.push(normalized);
                     registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
-                    registerEdge(normalized.target_start, normalized.source_start, normalized.similarity, normalized.span);
                 }
             });
         }
+        if (orderedSectionAnchors.length > 1) {
+            for (var idx = 1; idx < orderedSectionAnchors.length; idx++) {
+                var anchorSrc = orderedSectionAnchors[idx];
+                var anchorDst = orderedSectionAnchors[idx - 1];
+                if (typeof anchorSrc !== "number" || typeof anchorDst !== "number") {
+                    continue;
+                }
+                var span = anchorSrc - anchorDst;
+                if (span < minLoopBeats) {
+                    continue;
+                }
+                var bridge = {
+                    source_start: anchorSrc,
+                    target_start: anchorDst,
+                    similarity: 0.25 + (idx % 4) * 0.05,
+                    span: span
+                };
+                loops.push(bridge);
+                registerEdge(bridge.source_start, bridge.target_start, bridge.similarity, bridge.span);
+            }
+        }
         loopChoices = loops;
         loopHistory = [];
+        recentSections = [];
         scheduleNextJump(true);
     }
 
@@ -1876,6 +2198,35 @@ function createJukeboxDriver(player, options) {
         var maxB = maxSequentialBeats;
         var upper = force ? Math.max(minB + 2, Math.floor((minB + maxB) / 2)) : maxB;
         beatsUntilJump = randomBetween(minB, upper);
+    }
+
+    function recordSectionVisit(sectionIdx) {
+        if (sectionIdx === undefined || sectionIdx === null) {
+            return;
+        }
+        recentSections.push(sectionIdx);
+        if (recentSections.length > 12) {
+            recentSections.shift();
+        }
+    }
+
+    function fallbackReentryTarget() {
+        if (!masterQs || !masterQs.length) {
+            return 0;
+        }
+        for (var probe = Math.min(masterQs.length - 1, currentIndex); probe >= 0; probe--) {
+            var edges = loopGraph[probe];
+            if (edges && edges.length) {
+                var candidate = selectJumpCandidate(probe);
+                if (candidate) {
+                    return candidate.target;
+                }
+            }
+        }
+        if (orderedSectionAnchors.length) {
+            return orderedSectionAnchors[Math.floor(Math.random() * orderedSectionAnchors.length)];
+        }
+        return Math.max(0, Math.floor(masterQs.length / 3));
     }
 
     function selectJumpCandidate(src) {
@@ -1904,8 +2255,24 @@ function createJukeboxDriver(player, options) {
         _.each(filtered, function(edge) {
             var simNorm = Math.max(0, Math.min(1, (edge.similarity + 1) / 2));
             var spanNorm = Math.min(1, Math.max(0.25, edge.span / (minLoopBeats * 1.5)));
-            var sectionBonus = edge.sameSection ? 0.2 : -0.05;
-            var weight = 0.35 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
+            var sectionBonus = edge.sameSection ? 0.18 : 0.08;
+            var weight = 0.28 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
+            var targetSection = null;
+            if (masterQs[edge.target] && typeof masterQs[edge.target].section === "number") {
+                targetSection = masterQs[edge.target].section;
+            }
+            if (targetSection !== null) {
+                var depth = 0;
+                for (var r = recentSections.length - 1; r >= 0 && depth < 4; r--, depth++) {
+                    if (recentSections[r] === targetSection) {
+                        weight -= 0.12 * (4 - depth);
+                        break;
+                    }
+                }
+            }
+            if (weight < 0.05) {
+                weight = 0.05;
+            }
             total += weight;
             weights.push(weight);
         });
@@ -1925,7 +2292,9 @@ function createJukeboxDriver(player, options) {
     function advanceSequential() {
         currentIndex += 1;
         if (currentIndex >= masterQs.length) {
-            currentIndex = 0;
+            var reentry = fallbackReentryTarget();
+            currentIndex = Math.max(0, Math.min(masterQs.length - 1, reentry));
+            scheduleNextJump(true);
         }
     }
 
@@ -1955,6 +2324,7 @@ function createJukeboxDriver(player, options) {
             return;
         }
         var q = masterQs[currentIndex];
+        recordSectionVisit(q.section);
         var delay = player.playQ(q);
         q.tile.highlight();
         if (q.other && q.other.tile) {

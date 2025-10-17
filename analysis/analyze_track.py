@@ -28,6 +28,7 @@ CANON_SIMILARITY_THRESHOLD = 0.58
 CANON_MIN_PHASE_ALIGNMENT = 0.80
 CANON_MIN_PAIRS = 6
 CANON_TOP_CANDIDATES = 8
+CANON_MAX_OFFSET_FRACTION = 0.65  # limit excessively long wraparound offsets
 
 
 @dataclass
@@ -546,6 +547,7 @@ def _collect_canon_candidates(
                     + 0.05 * max_val
                     - 0.03 * variability_penalty
                     + 0.08 * score.high_similarity_ratio * length
+                    + 0.035 * min(1.0, score.offset / max(8, min_pairs))
                 )
                 if threshold < similarity_threshold:
                     run_score *= 0.92
@@ -584,8 +586,14 @@ def _evaluate_offsets(
     similarity_threshold: float,
 ) -> List[OffsetScore]:
     n_beats = ssm.shape[0]
+    if n_beats <= 0:
+        max_offset_beats = 0
+    else:
+        max_offset_beats = max(4, min(n_beats - 1, int(round(n_beats * CANON_MAX_OFFSET_FRACTION))))
     scores: List[OffsetScore] = []
     for offset in range(1, n_beats):
+        if offset > max_offset_beats:
+            continue
         diag = np.diag(ssm, k=offset)
         if diag.size < min_pairs:
             continue
@@ -615,12 +623,19 @@ def _evaluate_offsets(
             )
         )
     # Prefer offsets that align on bar boundaries (multiples of beats_per_bar)
-    def _score_key(s: OffsetScore) -> Tuple[float, float, float]:
+    def _score_key(s: OffsetScore) -> Tuple[float, float, float, float]:
         bar_bonus = 0.0
         if beats_per_bar > 0 and (s.offset % beats_per_bar) == 0:
             bar_bonus = 0.05  # small nudge to prefer bar-aligned offsets
+        offset_weight = min(0.12, 0.04 * (s.offset / max(1, beats_per_bar)))
+        size_bonus = min(0.18, 0.18 * (s.offset / max(8, max_offset_beats)))
         stability = s.mean - 0.4 * s.std
-        return (stability + bar_bonus, s.high_similarity_ratio, s.phase_alignment)
+        return (
+            stability + bar_bonus + offset_weight,
+            s.high_similarity_ratio + size_bonus,
+            s.phase_alignment,
+            float(s.offset),
+        )
 
     scores.sort(key=_score_key, reverse=True)
     return scores
@@ -733,6 +748,7 @@ def _fill_unassigned_ranges(
     similarity_threshold: float,
     min_phase_alignment: float,
     min_pairs: int,
+    max_offset_beats: int,
 ) -> List[Dict[str, object]]:
     """Fill remaining gaps by choosing the best offset per contiguous region."""
     n_beats = ssm.shape[0]
@@ -743,6 +759,7 @@ def _fill_unassigned_ranges(
 
     default_offset = offset_scores[0].offset if offset_scores else 1
     default_offset = max(1, min(default_offset, n_beats - 1))
+    default_offset = max(min_pairs, min(default_offset, max_offset_beats if max_offset_beats else default_offset))
 
     # build list of contiguous uncovered ranges
     ranges: List[Tuple[int, int]] = []
@@ -776,6 +793,8 @@ def _fill_unassigned_ranges(
                 continue
             offset = (idx_candidate - start) % n_beats
             if offset == 0:
+                continue
+            if offset > max_offset_beats:
                 continue
             candidate_offsets.add(offset)
 
@@ -935,6 +954,10 @@ def compute_canon_alignment(
         similarity_threshold=similarity_threshold,
     )
     n_beats = len(beats)
+    if n_beats <= 0:
+        max_offset_beats = 0
+    else:
+        max_offset_beats = max(4, min(n_beats - 1, int(round(n_beats * CANON_MAX_OFFSET_FRACTION))))
     loop_candidates = _compute_loop_candidates(
         ssm=ssm,
         contexts=contexts,
@@ -944,7 +967,7 @@ def compute_canon_alignment(
     if not offsets:
         if n_beats == 0:
             return None
-        fallback_offset = 1 if n_beats > 1 else 0
+        fallback_offset = max(1, min_pairs, min(max_offset_beats if n_beats > 1 else 1, n_beats - 1)) if n_beats > 1 else 0
         assignments = np.array(
             [(idx + fallback_offset) % n_beats for idx in range(n_beats)],
             dtype=np.int32,
@@ -1017,6 +1040,7 @@ def compute_canon_alignment(
         similarity_threshold=similarity_threshold,
         min_phase_alignment=min_phase_alignment,
         min_pairs=min_pairs,
+        max_offset_beats=max_offset_beats,
     )
     segments = primary_segments + extra_segments
 
@@ -1024,12 +1048,23 @@ def compute_canon_alignment(
     n_beats = len(beats)
     if n_beats:
         fallback_offset = default_offset if default_offset > 0 else 1
+        fallback_offset = max(fallback_offset, min_pairs, max(1, min(max_offset_beats if max_offset_beats else fallback_offset, n_beats - 1)))
         for idx in range(n_beats):
             if assignments[idx] < 0:
                 dst = (idx + fallback_offset) % n_beats
                 assignments[idx] = dst
                 pair_similarity[idx] = float(ssm[idx, dst])
                 coverage[idx] = True
+            else:
+                dst = assignments[idx]
+                raw_offset = dst - idx
+                if raw_offset < 0:
+                    raw_offset += n_beats
+                if raw_offset > max_offset_beats:
+                    dst = (idx + fallback_offset) % n_beats
+                    assignments[idx] = dst
+                    pair_similarity[idx] = float(ssm[idx, dst])
+                    coverage[idx] = True
     coverage_ratio = float(np.mean(coverage.astype(np.float32))) if n_beats else 0.0
 
     # Choose a recommended start beat on a bar boundary (phase==0) that maximizes similarity

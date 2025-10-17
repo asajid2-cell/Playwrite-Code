@@ -99,6 +99,39 @@
                         </span>
                     </div>
                 </header>
+                <div id="canon-controls" class="viz-tuning hidden">
+                    <button type="button" id="canon-settings-toggle" class="viz-button ghost">Canon Controls</button>
+                    <button type="button" id="canon-regenerate" class="viz-button ghost">Regenerate</button>
+                    <button type="button" id="canon-reset" class="viz-button ghost">Reset</button>
+                </div>
+                <div id="canon-settings-panel" class="canon-settings-panel hidden" aria-hidden="true">
+                    <div class="canon-setting-row">
+                        <label for="canon-min-offset">Min Offset</label>
+                        <input type="range" id="canon-min-offset" min="1" max="32" step="1" value="8">
+                        <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
+                    </div>
+                    <div class="canon-setting-row">
+                        <label for="canon-max-offset">Max Offset</label>
+                        <input type="range" id="canon-max-offset" min="8" max="96" step="1" value="64">
+                        <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
+                    </div>
+                    <div class="canon-setting-row">
+                        <label for="canon-dwell">Hold Duration</label>
+                        <input type="range" id="canon-dwell" min="1" max="16" step="1" value="6">
+                        <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
+                    </div>
+                    <div class="canon-setting-row">
+                        <label for="canon-density">Texture</label>
+                        <input type="range" id="canon-density" min="1" max="5" step="1" value="2">
+                        <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
+                    </div>
+                    <div class="canon-setting-row">
+                        <label for="canon-variation">Variation</label>
+                        <input type="range" id="canon-variation" min="0" max="6" step="1" value="2">
+                        <span class="canon-setting-value" data-setting-display="variation">2</span>
+                    </div>
+                    <p class="canon-settings-note">Adjust the canon voice in real-time. Tap Regenerate to explore alternate overlays without reloading your track.</p>
+                </div>
                 <div class="viz-status" id="status-panel"></div>
                 <div id="error"></div>
                 <div id="tiles" class="tiles-canvas"></div>
@@ -202,8 +235,8 @@
 
             const submitButton = form.querySelector('button[type="submit"]');
             submitButton.disabled = true;
-            submitButton.textContent = 'Processing…';
-            statusPanel.textContent = 'Analyzing audio – this can take a minute.';
+            submitButton.textContent = 'Processing...';
+            statusPanel.textContent = 'Analyzing audio... this can take a minute.';
 
             try {
                 const formData = new FormData(form);
@@ -215,7 +248,7 @@
                 if (!response.ok) {
                     throw new Error(payload.error || 'Something went wrong.');
                 }
-                statusPanel.textContent = 'Ready! Loading the visualizer…';
+                statusPanel.textContent = 'Ready! Loading the visualizer...';
                 window.location.href = payload.redirect;
             } catch (err) {
                 statusPanel.textContent = err.message;
@@ -224,6 +257,169 @@
                 submitButton.textContent = 'Transform Track';
             }
         });
+        const canonControls = document.getElementById('canon-controls');
+        const canonPanel = document.getElementById('canon-settings-panel');
+        const canonToggleBtn = document.getElementById('canon-settings-toggle');
+        const canonRegenerateBtn = document.getElementById('canon-regenerate');
+        const canonResetBtn = document.getElementById('canon-reset');
+        const densityLabels = ['Sparse', 'Light', 'Balanced', 'Rich', 'Dense'];
+        const defaultCanonSettings = {
+            minOffsetBeats: 8,
+            maxOffsetBeats: 64,
+            dwellBeats: 6,
+            density: 2,
+            variation: 2
+        };
+
+        function connectSlider(id, key, formatter, defaultValue) {
+            const input = document.getElementById(id);
+            const display = document.querySelector(`[data-setting-display="${key}"]`);
+            if (!input) {
+                return;
+            }
+            const formatValue = formatter || ((val) => val);
+            const updateDisplay = (val) => {
+                if (display) {
+                    display.textContent = formatValue(val);
+                }
+            };
+            const parse = (val) => parseInt(val, 10) || 0;
+            updateDisplay(parse(input.value));
+            input.addEventListener('input', () => {
+                const numeric = parse(input.value);
+                updateDisplay(numeric);
+                if (typeof window.updateCanonSetting === 'function') {
+                    window.updateCanonSetting(key, numeric);
+                }
+            });
+            if (defaultValue !== undefined) {
+                const min = input.min ? parseInt(input.min, 10) : defaultValue;
+                const max = input.max ? parseInt(input.max, 10) : defaultValue;
+                const initial = Math.min(max, Math.max(min, defaultValue));
+                input.value = initial;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
+        connectSlider('canon-min-offset', 'minOffsetBeats', (v) => `${v} beats`, defaultCanonSettings.minOffsetBeats);
+        connectSlider('canon-max-offset', 'maxOffsetBeats', (v) => `${v} beats`, defaultCanonSettings.maxOffsetBeats);
+        connectSlider('canon-dwell', 'dwellBeats', (v) => `${v} beats`, defaultCanonSettings.dwellBeats);
+        connectSlider('canon-density', 'density', (v) => {
+            const index = Math.min(densityLabels.length - 1, Math.max(0, v - 1));
+            return `${densityLabels[index]} (${v}/5)`;
+        }, defaultCanonSettings.density);
+        connectSlider('canon-variation', 'variation', (v) => v.toString(), defaultCanonSettings.variation);
+
+        const minOffsetSlider = document.getElementById('canon-min-offset');
+        const maxOffsetSlider = document.getElementById('canon-max-offset');
+        if (minOffsetSlider && maxOffsetSlider) {
+            const syncMaxMin = () => {
+                const minVal = parseInt(minOffsetSlider.value, 10) || 1;
+                const maxVal = parseInt(maxOffsetSlider.value, 10) || (minVal + 1);
+                const newMin = Math.max(2, minVal + 1);
+                maxOffsetSlider.min = newMin;
+                if (maxVal <= minVal) {
+                    maxOffsetSlider.value = newMin;
+                    maxOffsetSlider.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            };
+            minOffsetSlider.addEventListener('input', syncMaxMin);
+            syncMaxMin();
+        }
+
+        if (canonToggleBtn && canonPanel) {
+            canonToggleBtn.addEventListener('click', () => {
+                const isHidden = canonPanel.classList.toggle('hidden');
+                canonPanel.setAttribute('aria-hidden', isHidden ? 'true' : 'false');
+            });
+        }
+
+        if (canonRegenerateBtn) {
+            canonRegenerateBtn.addEventListener('click', () => {
+                if (typeof window.regenerateCanonMappingManually === 'function') {
+                    window.regenerateCanonMappingManually();
+                }
+            });
+        }
+
+        if (canonResetBtn) {
+            canonResetBtn.addEventListener('click', () => {
+                const sliderMap = [
+                    ['canon-min-offset', defaultCanonSettings.minOffsetBeats],
+                    ['canon-max-offset', defaultCanonSettings.maxOffsetBeats],
+                    ['canon-dwell', defaultCanonSettings.dwellBeats],
+                    ['canon-density', defaultCanonSettings.density],
+                    ['canon-variation', defaultCanonSettings.variation]
+                ];
+                sliderMap.forEach(([id, value]) => {
+                    const slider = document.getElementById(id);
+                    if (!slider) {
+                        return;
+                    }
+                    const min = slider.min ? parseInt(slider.min, 10) : value;
+                    const max = slider.max ? parseInt(slider.max, 10) : value;
+                    const target = Math.min(max, Math.max(min, value));
+                    slider.value = target;
+                    slider.dispatchEvent(new Event('input', { bubbles: true }));
+                });
+            });
+        }
+
+        window.setCanonUiVisibility = (visible) => {
+            if (!canonControls) {
+                return;
+            }
+            canonControls.classList.toggle('hidden', !visible);
+            if (!visible && canonPanel) {
+                canonPanel.classList.add('hidden');
+                canonPanel.setAttribute('aria-hidden', 'true');
+            }
+        };
+
+        window.onCanonTrackReady = (payload) => {
+            if (!canonControls) {
+                return;
+            }
+            if (!payload || !payload.beats) {
+                canonControls.classList.add('hidden');
+                if (canonPanel) {
+                    canonPanel.classList.add('hidden');
+                    canonPanel.setAttribute('aria-hidden', 'true');
+                }
+                return;
+            }
+            canonControls.classList.remove('hidden');
+            const beats = payload.beats;
+            if (payload.minOffsetBeats) {
+                defaultCanonSettings.minOffsetBeats = payload.minOffsetBeats;
+            }
+            if (payload.maxOffsetBeats) {
+                defaultCanonSettings.maxOffsetBeats = payload.maxOffsetBeats;
+            }
+            const minSlider = document.getElementById('canon-min-offset');
+            const maxSlider = document.getElementById('canon-max-offset');
+            if (minSlider) {
+                const maxForMin = Math.max(1, Math.min(64, Math.max(1, Math.floor((beats - 1) / 2))));
+                minSlider.max = Math.max(1, maxForMin);
+                const minValue = Math.min(payload.minOffsetBeats || defaultCanonSettings.minOffsetBeats, maxForMin);
+                minSlider.value = minValue;
+                minSlider.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (maxSlider) {
+                const cap = beats > 0 ? Math.max(2, beats - 1) : defaultCanonSettings.maxOffsetBeats;
+                maxSlider.max = cap;
+                const minCandidate = Math.max(2, Math.min(8, cap - 1));
+                let minSetting = Math.min(minCandidate, cap - 1);
+                if (minSetting >= cap) {
+                    minSetting = Math.max(2, cap - 1);
+                }
+                maxSlider.min = Math.max(2, minSetting);
+                const maxValue = Math.min(payload.maxOffsetBeats || defaultCanonSettings.maxOffsetBeats, cap);
+                maxSlider.value = maxValue;
+                maxSlider.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        };
+
         // helper to clear params when browser back/forward is used
         window.addEventListener('popstate', () => {
             const params = new URLSearchParams(window.location.search);

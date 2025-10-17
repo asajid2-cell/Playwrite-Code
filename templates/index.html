@@ -110,27 +110,27 @@
                             <div id="canon-settings-panel" class="canon-settings-panel hidden" aria-hidden="true">
                                 <div class="canon-setting-row">
                                     <label for="canon-min-offset">Min Offset</label>
-                                    <input type="range" id="canon-min-offset" min="1" max="32" step="1" value="8">
+                                    <input type="range" id="canon-min-offset" data-setting-key="minOffsetBeats" min="1" max="32" step="1" value="8">
                                     <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
                                 </div>
                                 <div class="canon-setting-row">
                                     <label for="canon-max-offset">Max Offset</label>
-                                    <input type="range" id="canon-max-offset" min="8" max="96" step="1" value="64">
+                                    <input type="range" id="canon-max-offset" data-setting-key="maxOffsetBeats" min="8" max="96" step="1" value="64">
                                     <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
                                 </div>
                                 <div class="canon-setting-row">
                                     <label for="canon-dwell">Hold Duration</label>
-                                    <input type="range" id="canon-dwell" min="1" max="16" step="1" value="6">
+                                    <input type="range" id="canon-dwell" data-setting-key="dwellBeats" min="1" max="16" step="1" value="6">
                                     <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
                                 </div>
                                 <div class="canon-setting-row">
                                     <label for="canon-density">Texture</label>
-                                    <input type="range" id="canon-density" min="1" max="5" step="1" value="2">
+                                    <input type="range" id="canon-density" data-setting-key="density" min="1" max="5" step="1" value="2">
                                     <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
                                 </div>
                                 <div class="canon-setting-row">
                                     <label for="canon-variation">Variation</label>
-                                    <input type="range" id="canon-variation" min="0" max="6" step="1" value="2">
+                                    <input type="range" id="canon-variation" data-setting-key="variation" min="0" max="6" step="1" value="2">
                                     <span class="canon-setting-value" data-setting-display="variation">2</span>
                                 </div>
                                 <p class="canon-settings-note">Adjust the canon voice in real-time. Tap Regenerate to explore alternate overlays without reloading your track.</p>
@@ -387,6 +387,54 @@
         const canonAdvancedToggle = document.getElementById('canon-advanced-toggle');
         const sliderElements = canonPanel ? Array.from(canonPanel.querySelectorAll('input[type="range"]')) : [];
         const controlButtons = [canonToggleBtn, canonRegenerateBtn, canonResetBtn];
+        const defaultCanonSliderMap = [
+            ['canon-min-offset', 'minOffsetBeats'],
+            ['canon-max-offset', 'maxOffsetBeats'],
+            ['canon-dwell', 'dwellBeats'],
+            ['canon-density', 'density'],
+            ['canon-variation', 'variation']
+        ];
+
+        const showCanonPanel = () => {
+            if (!canonPanel) {
+                return;
+            }
+            canonPanel.classList.remove('hidden');
+            canonPanel.setAttribute('aria-hidden', 'false');
+        };
+
+        const hideCanonPanel = () => {
+            if (!canonPanel) {
+                return;
+            }
+            canonPanel.classList.add('hidden');
+            canonPanel.setAttribute('aria-hidden', 'true');
+        };
+
+        const dispatchSliderInput = (slider) => {
+            slider.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        const applyCanonSliderValues = () => {
+            sliderElements.forEach((slider) => dispatchSliderInput(slider));
+        };
+
+        const resetCanonSliders = (dispatch = true) => {
+            defaultCanonSliderMap.forEach(([id, key]) => {
+                const slider = document.getElementById(id);
+                if (!slider) {
+                    return;
+                }
+                const base = defaultCanonSettings[key];
+                const min = slider.min ? parseInt(slider.min, 10) : base;
+                const max = slider.max ? parseInt(slider.max, 10) : base;
+                const target = Math.min(max, Math.max(min, base));
+                slider.value = target;
+                if (dispatch) {
+                    dispatchSliderInput(slider);
+                }
+            });
+        };
 
         const setCanonControlsEnabled = (enabled) => {
             const allow = !!enabled;
@@ -413,6 +461,15 @@
                 if (typeof window.setCanonAdvancedEnabled === 'function') {
                     window.setCanonAdvancedEnabled(enabled);
                 }
+                if (enabled) {
+                    setCanonControlsEnabled(true);
+                    showCanonPanel();
+                    applyCanonSliderValues();
+                } else {
+                    resetCanonSliders(true);
+                    setCanonControlsEnabled(false);
+                    hideCanonPanel();
+                }
             });
         }
 
@@ -433,24 +490,7 @@
 
         if (canonResetBtn) {
             canonResetBtn.addEventListener('click', () => {
-                const sliderMap = [
-                    ['canon-min-offset', defaultCanonSettings.minOffsetBeats],
-                    ['canon-max-offset', defaultCanonSettings.maxOffsetBeats],
-                    ['canon-dwell', defaultCanonSettings.dwellBeats],
-                    ['canon-density', defaultCanonSettings.density],
-                    ['canon-variation', defaultCanonSettings.variation]
-                ];
-                sliderMap.forEach(([id, value]) => {
-                    const slider = document.getElementById(id);
-                    if (!slider) {
-                        return;
-                    }
-                    const min = slider.min ? parseInt(slider.min, 10) : value;
-                    const max = slider.max ? parseInt(slider.max, 10) : value;
-                    const target = Math.min(max, Math.max(min, value));
-                    slider.value = target;
-                    slider.dispatchEvent(new Event('input', { bubbles: true }));
-                });
+                resetCanonSliders(true);
             });
         }
 
@@ -544,12 +584,18 @@
             if (canonAdvancedToggle) {
                 canonAdvancedToggle.checked = currentAdvanced;
             }
+            if (currentAdvanced) {
+                showCanonPanel();
+            }
         };
 
         window.onCanonModeChanged = (enabled) => {
             setCanonControlsEnabled(enabled);
             if (canonAdvancedToggle) {
                 canonAdvancedToggle.checked = !!enabled;
+            }
+            if (!enabled) {
+                hideCanonPanel();
             }
         };
 

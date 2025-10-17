@@ -248,6 +248,11 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     justify-items: stretch;
 }
 
+.state-player .page-shell {
+    padding-top: clamp(10px, 1.6vw, 20px);
+    gap: clamp(18px, 2.6vw, 30px);
+}
+
 .hero {
     grid-column: 1;
     display: flex;
@@ -256,6 +261,10 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     text-align: left;
     padding: 0;
     margin-top: clamp(38px, 5vw, 62px);
+}
+
+.state-player .hero {
+    margin-top: clamp(4px, 1.2vw, 12px);
 }
 
 .back-button {
@@ -330,9 +339,11 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 
 
 .state-player .layout {
-    grid-template-columns: minmax(360px, 1fr) minmax(540px, 1fr);
-    gap: clamp(26px, 3.8vw, 44px);
-    justify-items: center;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(20px, 3vw, 36px);
+    justify-items: stretch;
+    margin-top: -6px;
 }
 
 .intake-panel {
@@ -348,7 +359,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .state-player .viz-panel {
-    grid-column: 2;
+    grid-column: 1;
     justify-self: center;
 }
 
@@ -397,7 +408,8 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .state-player .layout {
-    grid-template-columns: minmax(360px, 1fr) minmax(540px, 1fr);
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
     gap: clamp(26px, 3.8vw, 44px);
     justify-items: center;
 }
@@ -415,7 +427,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .state-player .viz-panel {
-    grid-column: 2;
+    grid-column: 1;
     justify-self: center;
 }
 
@@ -624,6 +636,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     opacity: 0;
     pointer-events: none;
     transform: translateY(24px);
+    display: none;
 }
 
 

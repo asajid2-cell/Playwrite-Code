@@ -18,6 +18,7 @@
     </div>
 
     <div class="page-shell">
+        <a href="/" class="back-button hidden" id="back-button" aria-label="Back to song select"><span aria-hidden="true">&#8592;</span><span class="back-button-label">Back</span></a>
         <header class="hero">
             <div class="hero-meta">
                 <div class="badge">Harmonizer Lab</div>
@@ -139,12 +140,12 @@
                         <div id="error"></div>
                         <div id="tiles" class="tiles-canvas"></div>
                         <footer class="viz-footer">
-                            Press space to toggle playback · drag the window wider for detail
+                            Press space to toggle playback - drag the window to reposition
                         </footer>
                     </div>
                     <aside class="viz-sidebar hidden" id="advanced-sidebar">
                         <div id="advanced-controls-header" class="advanced-controls-header hidden">
-                            <select id="advanced-group-select" class="advanced-group-select"></select>
+                            <div id="advanced-group-buttons" class="advanced-group-buttons"></div>
                             <label class="advanced-mode-toggle">
                                 <input type="checkbox" id="advanced-mode-toggle">
                                 <span>Advanced mode</span>
@@ -188,6 +189,7 @@
     <script>
     (function() {
         const body = document.body;
+        const vizPanelElement = document.getElementById('viz-panel');
         const algorithmToggle = document.getElementById('algorithm-toggle');
         const sourceToggle = document.getElementById('source-toggle');
         const algorithmInput = document.getElementById('algorithm-input');
@@ -197,15 +199,29 @@
         const form = document.getElementById('process-form');
         const statusPanel = document.getElementById('form-status');
         const modeFromBody = body.dataset.mode || "canon";
+        let currentModeKey = modeFromBody;
 
         const setState = (state) => {
             body.classList.remove('state-home', 'state-player');
             body.classList.add(state);
+            if (state === 'state-home' && vizPanelElement) {
+                vizPanelElement.style.left = '';
+                vizPanelElement.style.top = '';
+                vizPanelElement.style.width = '';
+                vizPanelElement.style.height = '';
+            }
         };
+
+        const backButton = document.getElementById('back-button');
 
         if ({{ 'true' if track_id else 'false' }}) {
             setState('state-player');
+            if (backButton) {
+                backButton.classList.remove('hidden');
+                backButton.setAttribute('href', window.location.pathname + window.location.search.replace(/([?&])trid=[^&]*/g, '').replace(/^&/, '?'));
+            }
         } else {
+            if (backButton) { backButton.classList.add('hidden'); }
             setState('state-home');
         }
 
@@ -227,7 +243,14 @@
             if (!button) {
                 return;
             }
-            syncAlgorithmButtons(button.dataset.algorithm);
+            const targetMode = button.dataset.algorithm;
+            syncAlgorithmButtons(targetMode);
+            currentModeKey = targetMode;
+            body.dataset.mode = targetMode;
+            populateAdvancedGroups(currentModeKey);
+            if (currentAdvancedGroup) {
+                renderAdvancedControls(currentAdvancedGroup);
+            }
         });
 
         sourceToggle.addEventListener('click', (event) => {
@@ -454,6 +477,19 @@
             }
         };
 
+        $(function() {
+            const $vizPanel = $('#viz-panel');
+            if (!$vizPanel.length || typeof $vizPanel.draggable !== 'function') {
+                return;
+            }
+            const $layout = $('.layout');
+            $vizPanel.draggable({
+                handle: '.viz-header',
+                containment: $layout.length ? $layout : 'body',
+                scroll: false
+            });
+        });
+
         window.onCanonTrackReady = (payload) => {
             if (!canonControls) {
                 return;
@@ -519,7 +555,7 @@
 
         const advancedSidebar = document.getElementById('advanced-sidebar');
         const advancedControlsHeader = document.getElementById('advanced-controls-header');
-        const advancedGroupSelect = document.getElementById('advanced-group-select');
+        const advancedGroupButtons = document.getElementById('advanced-group-buttons');
         const advancedModeToggle = document.getElementById('advanced-mode-toggle');
         const advancedApplyButton = document.getElementById('advanced-apply');
         const advancedResetButton = document.getElementById('advanced-reset');
@@ -534,7 +570,9 @@
         const advancedGroupConfig = {
             canonOverlay: {
                 label: 'Autocanonizer Overlay',
+                shortLabel: 'Canon Overlay',
                 description: 'Tune how the canon overlay enters, how dense it is, and how much variation it allows.',
+                tooltip: 'Retune the live Autocanonizer overlay spacing, dwell, and texture.',
                 fields: [
                     { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation between overlay voices.' },
                     { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest allowed beat offset between overlay voices.' },
@@ -545,7 +583,9 @@
             },
             eternalOverlay: {
                 label: 'Eternal Canonizer Overlay',
+                shortLabel: 'Eternal Overlay',
                 description: 'Shape the multivoice overlay used in Eternal Canonizer mode.',
+                tooltip: 'Sculpt how Eternal Canonizer layers and regenerates its overlay voices.',
                 fields: [
                     { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation for the overlay voices.' },
                     { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest beat separation for overlay voices.' },
@@ -556,7 +596,9 @@
             },
             jukeboxLoop: {
                 label: 'Eternal Jukebox Loops',
+                shortLabel: 'Jukebox Loop',
                 description: 'Adjust how the Eternal Jukebox chooses loops and when it jumps between sections.',
+                tooltip: 'Control Eternal Jukebox loop length, similarity threshold, and jump variety.',
                 fields: [
                     { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest loop allowed when picking jump targets.' },
                     { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats to play before forcing a jump.' },
@@ -567,7 +609,9 @@
             },
             eternalLoop: {
                 label: 'Eternal Canonizer Loops',
+                shortLabel: 'Eternal Loop',
                 description: 'Control loop behaviour when running the Eternal Canonizer.',
+                tooltip: 'Balance Eternal Canonizer loop length, similarity, and sectional bias.',
                 fields: [
                     { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest allowed loop when chaining canon segments.' },
                     { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats to play before forcing a jump to another segment.' },
@@ -578,11 +622,30 @@
             }
         };
 
-        let currentAdvancedGroup = 'canonOverlay';
+
+        const ADVANCED_GROUPS_BY_MODE = {
+            canon: ['canonOverlay'],
+            jukebox: ['jukeboxLoop'],
+            eternal: ['eternalOverlay', 'eternalLoop', 'canonOverlay', 'jukeboxLoop']
+        };
+        const ALL_ADVANCED_GROUPS = Object.keys(advancedGroupConfig);
+
+        let currentAdvancedGroup = null;
         let advancedValueDisplays = {};
         let advancedDescriptionNode = null;
 
-        if (advancedSidebar && advancedControlsHeader && advancedGroupSelect && typeof window.getAdvancedSettings === 'function') {
+        if (backButton) {
+            backButton.addEventListener('click', (event) => {
+                event.preventDefault();
+                const search = new URLSearchParams(window.location.search);
+                search.delete('trid');
+                search.delete('mode');
+                const query = search.toString();
+                window.location.href = query ? `/?${query}` : '/';
+            });
+        }
+
+        if (advancedSidebar && advancedControlsHeader && advancedGroupButtons && typeof window.getAdvancedSettings === 'function') {
             initializeAdvancedSidebar();
         }
 
@@ -593,39 +656,89 @@
                 advancedSettingsPanel.classList.remove('hidden');
                 if (!advancedDescriptionNode) {
                     advancedDescriptionNode = document.createElement('p');
-                    advancedDescriptionNode.className = 'advanced-description';
-                    advancedDescriptionNode.id = 'advanced-group-description';
+                    advancedDescriptionNode.className = "advanced-description";
+                    advancedDescriptionNode.id = "advanced-group-description";
                     advancedSettingsPanel.insertBefore(advancedDescriptionNode, advancedSettingsPanel.firstChild);
                 }
             }
-            populateAdvancedGroups();
+            populateAdvancedGroups(currentModeKey);
             bindAdvancedEvents();
-            renderAdvancedControls(currentAdvancedGroup);
+            if (currentAdvancedGroup) {
+                renderAdvancedControls(currentAdvancedGroup);
+            }
         }
 
-        function populateAdvancedGroups() {
-            const entries = Object.keys(advancedGroupConfig);
-            advancedGroupSelect.innerHTML = '';
+        function getAllowedGroups(modeKey) {
+            const normalized = (modeKey || '').toLowerCase();
+            const allowed = ADVANCED_GROUPS_BY_MODE[normalized];
+            if (!allowed || !allowed.length) {
+                return ALL_ADVANCED_GROUPS.slice();
+            }
+            return allowed.slice();
+        }
+
+        function setActiveGroupButton(groupKey) {
+            if (!advancedGroupButtons) {
+                return;
+            }
+            const buttons = advancedGroupButtons.querySelectorAll('.advanced-group-button');
+            buttons.forEach((btn) => {
+                btn.classList.toggle('active', btn.dataset.group === groupKey);
+            });
+        }
+
+        function populateAdvancedGroups(modeKey) {
+            if (!advancedGroupButtons) {
+                return;
+            }
+            const entries = getAllowedGroups(modeKey);
+            advancedGroupButtons.innerHTML = '';
+            advancedGroupButtons.classList.toggle('hidden', entries.length <= 1);
+            if (!entries.length) {
+                currentAdvancedGroup = null;
+                advancedContainer.innerHTML = '';
+                if (advancedModeToggle) { advancedModeToggle.checked = false; }
+                return;
+            }
             entries.forEach((key) => {
                 const groupInfo = advancedGroupConfig[key];
-                const option = document.createElement('option');
-                option.value = key;
-                option.textContent = groupInfo.label;
-                advancedGroupSelect.appendChild(option);
+                if (!groupInfo) {
+                    return;
+                }
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'advanced-group-button';
+                button.dataset.group = key;
+                button.textContent = groupInfo.shortLabel || groupInfo.label;
+                if (entries.length === 1) {
+                    button.disabled = true;
+                }
+                button.title = groupInfo.tooltip || groupInfo.description || groupInfo.label;
+                button.addEventListener('click', () => {
+                    if (currentAdvancedGroup === key) {
+                        return;
+                    }
+                    currentAdvancedGroup = key;
+                    setActiveGroupButton(key);
+                    renderAdvancedControls(key);
+                });
+                advancedGroupButtons.appendChild(button);
             });
             if (entries.indexOf(currentAdvancedGroup) === -1) {
                 currentAdvancedGroup = entries[0];
             }
-            advancedGroupSelect.value = currentAdvancedGroup;
+            setActiveGroupButton(currentAdvancedGroup);
+            if (currentAdvancedGroup) {
+                renderAdvancedControls(currentAdvancedGroup);
+            }
         }
 
         function bindAdvancedEvents() {
-            advancedGroupSelect.addEventListener('change', () => {
-                const nextGroup = advancedGroupSelect.value;
-                renderAdvancedControls(nextGroup);
-            });
             if (advancedModeToggle) {
                 advancedModeToggle.addEventListener('change', () => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     const enabled = advancedModeToggle.checked;
                     window.setAdvancedGroupEnabled(currentAdvancedGroup, enabled);
                     setAdvancedControlsDisabled(!enabled);
@@ -633,17 +746,26 @@
             }
             if (advancedApplyButton) {
                 advancedApplyButton.addEventListener('click', () => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     window.applyAdvancedGroup(currentAdvancedGroup, { source: 'manual' });
                 });
             }
             if (advancedResetButton) {
                 advancedResetButton.addEventListener('click', () => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     window.resetAdvancedGroup(currentAdvancedGroup);
                     renderAdvancedControls(currentAdvancedGroup);
                 });
             }
             if (presetSaveButton) {
                 presetSaveButton.addEventListener('click', () => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     const rawName = presetNameInput ? presetNameInput.value.trim() : '';
                     window.saveAdvancedPreset(currentAdvancedGroup, rawName || undefined);
                     if (presetNameInput) {
@@ -654,6 +776,9 @@
             }
             if (presetDownloadButton) {
                 presetDownloadButton.addEventListener('click', () => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     const state = window.getAdvancedSettings(currentAdvancedGroup);
                     if (!state || !state.settings) {
                         return;
@@ -677,6 +802,9 @@
             }
             if (presetUploadInput) {
                 presetUploadInput.addEventListener('change', (event) => {
+                    if (!currentAdvancedGroup) {
+                        return;
+                    }
                     const file = event.target.files && event.target.files[0];
                     if (!file) {
                         return;
@@ -704,11 +832,15 @@
                 return;
             }
             currentAdvancedGroup = group;
-            advancedGroupSelect.value = currentAdvancedGroup;
+            setActiveGroupButton(currentAdvancedGroup);
             const state = window.getAdvancedSettings(group) || { settings: {}, defaults: {}, enabled: false };
             const defaults = state.defaults || {};
             advancedValueDisplays = {};
             advancedContainer.innerHTML = '';
+            const title = document.createElement('div');
+            title.className = 'advanced-group-title';
+            title.textContent = config.label;
+            advancedContainer.appendChild(title);
             if (advancedDescriptionNode) {
                 advancedDescriptionNode.textContent = config.description || '';
                 advancedDescriptionNode.classList.toggle('hidden', !config.description);
@@ -897,8 +1029,11 @@
             });
         }
 
+
+
         // helper to clear params when browser back/forward is used
         window.addEventListener('popstate', () => {
+            if (backButton) { backButton.classList.add('hidden'); }
             const params = new URLSearchParams(window.location.search);
             if (!params.has('trid')) {
                 setState('state-home');

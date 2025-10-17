@@ -36,6 +36,7 @@ body {
     display: flex;
     position: relative;
     overflow-x: hidden;
+    justify-content: center;
 }
 
 body::before {
@@ -237,13 +238,14 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 .page-shell {
     position: relative;
     z-index: 1;
-    width: min(1400px, 96vw);
+    width: min(1220px, 94vw);
     margin: 0 auto;
-    padding: clamp(12px, 2.4vw, 24px) clamp(14px, 3vw, 36px);
+    padding: clamp(12px, 2.4vw, 24px) clamp(18px, 3.5vw, 40px);
     display: grid;
-    grid-template-columns: minmax(260px, 0.8fr) minmax(680px, 1.4fr);
-    gap: clamp(18px, 3vw, 42px);
+    grid-template-columns: minmax(300px, 1fr) minmax(580px, 1fr);
+    gap: clamp(26px, 4vw, 50px);
     align-items: start;
+    justify-items: stretch;
 }
 
 .hero {
@@ -254,6 +256,41 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     text-align: left;
     padding: 0;
     margin-top: clamp(38px, 5vw, 62px);
+}
+
+.back-button {
+    position: fixed;
+    top: clamp(18px, 2.6vw, 30px);
+    left: clamp(18px, 2.6vw, 34px);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(232, 180, 184, 0.28);
+    background: rgba(18, 6, 12, 0.72);
+    color: rgba(232, 180, 184, 0.92);
+    text-decoration: none;
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    z-index: 6;
+}
+
+.back-button span[aria-hidden="true"] {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.back-button.hidden {
+    display: none;
+}
+
+.back-button:hover {
+    background: rgba(232, 180, 184, 0.18);
+    box-shadow: 0 10px 24px rgba(232, 180, 184, 0.22);
+    transform: translateY(-1px);
 }
 
 .hero-meta {
@@ -291,19 +328,11 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     line-height: 1.6;
 }
 
-.layout {
-    grid-column: 2;
-    display: grid;
-    grid-template-columns: minmax(380px, 1fr);
-    gap: clamp(20px, 3vw, 36px);
-    margin-top: 0;
-    align-items: start;
-    justify-items: stretch;
-}
 
 .state-player .layout {
-    grid-template-columns: minmax(360px, 0.95fr) minmax(760px, 1.55fr);
-    gap: clamp(22px, 3.5vw, 44px);
+    grid-template-columns: minmax(360px, 1fr) minmax(540px, 1fr);
+    gap: clamp(26px, 3.8vw, 44px);
+    justify-items: center;
 }
 
 .intake-panel {
@@ -315,14 +344,17 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 .viz-panel {
     justify-self: stretch;
     width: 100%;
+    min-width: 0;
 }
 
 .state-player .viz-panel {
     grid-column: 2;
+    justify-self: center;
 }
 
 .state-player .intake-panel {
     grid-column: 1;
+    justify-self: flex-start;
 }
 
 .state-home .layout {
@@ -365,8 +397,9 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .state-player .layout {
-    grid-template-columns: minmax(360px, 0.95fr) minmax(760px, 1.55fr);
-    gap: clamp(22px, 3.5vw, 44px);
+    grid-template-columns: minmax(360px, 1fr) minmax(540px, 1fr);
+    gap: clamp(26px, 3.8vw, 44px);
+    justify-items: center;
 }
 
 .intake-panel {
@@ -378,14 +411,17 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 .viz-panel {
     justify-self: stretch;
     width: 100%;
+    min-width: 0;
 }
 
 .state-player .viz-panel {
     grid-column: 2;
+    justify-self: center;
 }
 
 .state-player .intake-panel {
     grid-column: 1;
+    justify-self: flex-start;
 }
 
 .viz-panel {
@@ -455,18 +491,21 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .toggle {
-    flex: 1 1 140px;
-    padding: 12px 16px;
+    flex: 1 1 190px;
+    min-width: 170px;
+    padding: 12px 18px;
     background: rgba(232, 180, 184, 0.08);
     color: var(--color-text);
     border: 1px solid transparent;
     border-radius: 14px;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
+    font-size: 0.78rem;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     text-align: center;
-    min-width: 0;
+    line-height: 1.2;
+    white-space: normal;
 }
 
 .toggle:hover {
@@ -557,14 +596,16 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
 }
 
 .footer {
-    justify-self: start;
-    grid-column: 1 / -1;
+    position: fixed;
+    left: clamp(14px, 2.5vw, 32px);
+    bottom: clamp(12px, 2vw, 24px);
     text-align: left;
-    padding-top: 16px;
+    padding: 0;
     color: rgba(232, 180, 184, 0.5);
     font-size: 0.78rem;
     letter-spacing: 0.16em;
     text-transform: uppercase;
+    z-index: 4;
 }
 
 .state-home #viz-panel {

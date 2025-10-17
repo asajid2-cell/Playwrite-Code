@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 var remixer = null;
 var driver = null;
 var mode = "canon";
@@ -26,178 +26,13 @@ var isTrackReady = false;
 var serverLoopCandidateMap = {};
 var canonLoopCandidates = [];
 var loopPaths = [];
-var ADVANCED_DEFAULTS = {
-    canonOverlay: {
-        minOffsetBeats: 8,
-        maxOffsetBeats: 64,
-        dwellBeats: 6,
-        density: 2,
-        variation: 2
-    },
-    eternalOverlay: {
-        minOffsetBeats: 8,
-        maxOffsetBeats: 64,
-        dwellBeats: 6,
-        density: 2,
-        variation: 2
-    },
-    jukeboxLoop: {
-        minLoopBeats: 12,
-        maxSequentialBeats: 36,
-        loopThreshold: 0.55,
-        sectionBias: 0.6,
-        jumpVariance: 0.4
-    },
-    eternalLoop: {
-        minLoopBeats: 8,
-        maxSequentialBeats: 28,
-        loopThreshold: 0.5,
-        sectionBias: 0.55,
-        jumpVariance: 0.5
-    }
+var canonSettings = {
+    minOffsetBeats: 8,
+    maxOffsetBeats: 64,
+    dwellBeats: 6,
+    density: 2,
+    variation: 2
 };
-
-function cloneSettings(obj) {
-    return JSON.parse(JSON.stringify(obj));
-}
-
-var advancedSettings = {
-    canonOverlay: cloneSettings(ADVANCED_DEFAULTS.canonOverlay),
-    eternalOverlay: cloneSettings(ADVANCED_DEFAULTS.eternalOverlay),
-    jukeboxLoop: cloneSettings(ADVANCED_DEFAULTS.jukeboxLoop),
-    eternalLoop: cloneSettings(ADVANCED_DEFAULTS.eternalLoop)
-};
-
-var canonAdvancedEnabled = false;
-var canonSettings = advancedSettings.canonOverlay;
-
-var advancedEnabled = {
-    canonOverlay: false,
-    eternalOverlay: false,
-    jukeboxLoop: false,
-    eternalLoop: false
-};
-
-var eternalAdvancedEnabled = false;
-
-var advancedPresets = {
-    canonOverlay: [],
-    eternalOverlay: [],
-    jukeboxLoop: [],
-    eternalLoop: []
-};
-
-function cloneAdvancedState(group) {
-    if (!advancedSettings[group]) {
-        return {};
-    }
-    return cloneSettings(advancedSettings[group]);
-}
-
-function cloneAdvancedDefaults(group) {
-    if (!ADVANCED_DEFAULTS[group]) {
-        return {};
-    }
-    return cloneSettings(ADVANCED_DEFAULTS[group]);
-}
-
-function isAdvancedGroupEnabled(group) {
-    return !!advancedEnabled[group];
-}
-
-function setAdvancedGroupEnabledFlag(group, enabled) {
-    advancedEnabled[group] = !!enabled;
-    if (group === "canonOverlay") {
-        canonAdvancedEnabled = advancedEnabled[group];
-    } else if (group === "eternalOverlay") {
-        eternalAdvancedEnabled = advancedEnabled[group];
-    }
-}
-
-function ensureAdvancedGroupSettings(group) {
-    if (!advancedSettings[group]) {
-        advancedSettings[group] = cloneAdvancedDefaults(group);
-    }
-    return advancedSettings[group];
-}
-
-function updateAdvancedGroupSetting(group, key, value) {
-    var target = ensureAdvancedGroupSettings(group);
-    if (target && key !== undefined) {
-        target[key] = value;
-    }
-}
-
-function resetAdvancedGroupSettings(group) {
-    advancedSettings[group] = cloneAdvancedDefaults(group);
-    return cloneAdvancedState(group);
-}
-
-function generatePresetId() {
-    return "preset-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-}
-
-function getPresetsForGroup(group) {
-    if (!advancedPresets[group]) {
-        advancedPresets[group] = [];
-    }
-    return advancedPresets[group];
-}
-
-function saveAdvancedPreset(group, name, settings) {
-    var presets = getPresetsForGroup(group);
-    var preset = {
-        id: generatePresetId(),
-        name: name || "Preset " + (presets.length + 1),
-        settings: cloneSettings(settings || ensureAdvancedGroupSettings(group)),
-        createdAt: Date.now()
-    };
-    presets.push(preset);
-    return preset;
-}
-
-function findPreset(group, presetId) {
-    var presets = getPresetsForGroup(group);
-    for (var i = 0; i < presets.length; i++) {
-        if (presets[i] && presets[i].id === presetId) {
-            return presets[i];
-        }
-    }
-    return null;
-}
-
-function deleteAdvancedPreset(group, presetId) {
-    var presets = getPresetsForGroup(group);
-    for (var i = presets.length - 1; i >= 0; i--) {
-        if (presets[i] && presets[i].id === presetId) {
-            presets.splice(i, 1);
-            return true;
-        }
-    }
-    return false;
-}
-
-function clonePresetList(group) {
-    var presets = getPresetsForGroup(group);
-    return JSON.parse(JSON.stringify(presets));
-}
-
-function rebuildDriverForCurrentMode(shouldResume) {
-    if (!isTrackReady || !remixer || typeof remixer.getPlayer !== "function") {
-        return;
-    }
-    var resume = !!shouldResume && driver && typeof driver.isRunning === "function" && driver.isRunning();
-    if (driver && typeof driver.stop === "function") {
-        try {
-            driver.stop();
-        } catch (e) {}
-    }
-    driver = Driver(remixer.getPlayer());
-    if (resume && driver && typeof driver.start === "function") {
-        driver.start();
-    }
-}
-
 var canonBaseAssignments = [];
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
@@ -300,7 +135,7 @@ var yesSims = 0
 
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
-    var maxNeighbors = canonAdvancedEnabled ? 20 : 10;
+    var maxNeighbors = 20;
     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
     var MIN_INDEX_SPREAD = 3;
 
@@ -658,52 +493,12 @@ function regenerateCanonMapping(options) {
     }
     options = options || {};
     restoreBaseCanonMapping(masterQs);
-
-    if (!canonAdvancedEnabled) {
-        assignNormalizedVolumes(masterQs);
-        refreshCanonVisualization();
-        if (typeof window.onCanonRegenerated === "function") {
-            window.onCanonRegenerated({ mode: "legacy" });
-        }
-        return;
-    }
-
-    var result = regenerateOverlayFromSettings(canonSettings, { targetMode: "canon" });
-    refreshCanonVisualization();
-    if (typeof window.onCanonRegenerated === "function") {
-        window.onCanonRegenerated(result ? Object.assign({ mode: "advanced" }, result) : { mode: "advanced" });
-    }
-}
-
-function regenerateEternalOverlay(options) {
-    if (mode !== "eternal" || !masterQs || !masterQs.length) {
-        return;
-    }
-    options = options || {};
-    restoreBaseCanonMapping(masterQs);
-    if (!eternalAdvancedEnabled) {
-        assignNormalizedVolumes(masterQs);
-        return;
-    }
-    regenerateOverlayFromSettings(advancedSettings.eternalOverlay, { targetMode: "eternal" });
-}
-
-function regenerateOverlayFromSettings(settings, details) {
-    if (!settings || !masterQs || !masterQs.length) {
-        return null;
-    }
-    var minOffset = Math.max(1, Math.floor(settings.minOffsetBeats || 1));
-    var maxOffset = Math.max(minOffset + 1, Math.floor(settings.maxOffsetBeats || (masterQs.length * 0.6)));
+    var minOffset = Math.max(1, Math.floor(canonSettings.minOffsetBeats || 1));
+    var maxOffset = Math.max(minOffset + 1, Math.floor(canonSettings.maxOffsetBeats || (masterQs.length * 0.6)));
     maxOffset = Math.min(maxOffset, masterQs.length - 1);
-    if (maxOffset <= minOffset) {
-        maxOffset = Math.max(minOffset + 1, Math.min(masterQs.length - 1, minOffset + 8));
-        settings.maxOffsetBeats = maxOffset;
-    }
-    settings.minOffsetBeats = minOffset;
-    settings.maxOffsetBeats = maxOffset;
-    var dwell = Math.max(1, Math.floor(settings.dwellBeats || 4));
-    var density = Math.max(1, Math.floor(settings.density || 3));
-    var variation = Math.max(0, Math.floor(settings.variation || 0));
+    var dwell = Math.max(2, Math.floor(canonSettings.dwellBeats || 4));
+    var density = Math.max(1, Math.floor(canonSettings.density || 3));
+    var variation = Math.max(0, Math.floor(canonSettings.variation || 0));
     var spacing = Math.max(8, Math.round(36 / density) + 12);
     var runLen = Math.max(2, Math.min(8, density + 2));
     var jitter = Math.min(10, variation + 2);
@@ -726,14 +521,16 @@ function regenerateOverlayFromSettings(settings, details) {
         maxAbsOffset: maxOffset
     });
     assignNormalizedVolumes(masterQs);
-    return {
-        minOffset: minOffset,
-        maxOffset: maxOffset,
-        dwell: dwell,
-        density: density,
-        variation: variation,
-        targetMode: details && details.targetMode ? details.targetMode : "canon"
-    };
+    refreshCanonVisualization();
+    if (typeof window.onCanonRegenerated === "function") {
+        window.onCanonRegenerated({
+            minOffset: minOffset,
+            maxOffset: maxOffset,
+            dwell: dwell,
+            density: density,
+            variation: variation
+        });
+    }
 }
 
 function updateCanonSetting(key, value) {
@@ -778,104 +575,6 @@ if (typeof window !== "undefined") {
             density: canonSettings.density,
             variation: canonSettings.variation
         };
-    };
-    window.setCanonAdvancedEnabled = setCanonAdvancedEnabled;
-    window.isCanonAdvancedEnabled = function() { return canonAdvancedEnabled; };
-    window.setEternalAdvancedEnabled = setEternalAdvancedEnabled;
-    window.isEternalAdvancedEnabled = function() { return eternalAdvancedEnabled; };
-    window.getAdvancedDefaults = function(group) { return cloneAdvancedDefaults(group); };
-    window.getAdvancedSettings = function(group) {
-        return {
-            enabled: isAdvancedGroupEnabled(group),
-            settings: cloneAdvancedState(group),
-            defaults: cloneAdvancedDefaults(group)
-        };
-    };
-    window.setAdvancedGroupEnabled = function(group, enabled) {
-        if (group === "canonOverlay") {
-            setCanonAdvancedEnabled(enabled);
-            return;
-        }
-        if (group === "eternalOverlay") {
-            setEternalAdvancedEnabled(enabled);
-            return;
-        }
-        setAdvancedGroupEnabledFlag(group, enabled);
-        if ((group === "jukeboxLoop" && mode === "jukebox") || (group === "eternalLoop" && mode === "eternal")) {
-            rebuildDriverForCurrentMode(true);
-        }
-    };
-    window.isAdvancedGroupEnabled = function(group) { return isAdvancedGroupEnabled(group); };
-    window.updateAdvancedGroupSetting = function(group, key, value) {
-        updateAdvancedGroupSetting(group, key, value);
-    };
-    window.resetAdvancedGroup = function(group) {
-        var snapshot = resetAdvancedGroupSettings(group);
-        if (group === "canonOverlay" && mode === "canon") {
-            regenerateCanonMapping({ reason: "reset" });
-        } else if (group === "eternalOverlay" && mode === "eternal") {
-            regenerateEternalOverlay({ reason: "reset" });
-        } else if ((group === "jukeboxLoop" && mode === "jukebox") || (group === "eternalLoop" && mode === "eternal")) {
-            rebuildDriverForCurrentMode(true);
-        }
-        return snapshot;
-    };
-    window.applyAdvancedGroup = function(group, options) {
-        if (group === "canonOverlay") {
-            regenerateCanonMapping(Object.assign({ reason: "apply" }, options));
-        } else if (group === "eternalOverlay") {
-            regenerateEternalOverlay(Object.assign({ reason: "apply" }, options));
-        } else if ((group === "jukeboxLoop" && mode === "jukebox") || (group === "eternalLoop" && mode === "eternal")) {
-            rebuildDriverForCurrentMode(true);
-        }
-    };
-    window.getAdvancedPresets = function(group) {
-        return clonePresetList(group);
-    };
-    window.saveAdvancedPreset = function(group, name) {
-        return saveAdvancedPreset(group, name, ensureAdvancedGroupSettings(group));
-    };
-    window.deleteAdvancedPreset = function(group, presetId) {
-        return deleteAdvancedPreset(group, presetId);
-    };
-    window.loadAdvancedPreset = function(group, presetId) {
-        var preset = findPreset(group, presetId);
-        if (!preset) {
-            return null;
-        }
-        advancedSettings[group] = cloneSettings(preset.settings);
-        if (group === "canonOverlay" && mode === "canon") {
-            regenerateCanonMapping({ reason: "preset" });
-        } else if (group === "eternalOverlay" && mode === "eternal") {
-            regenerateEternalOverlay({ reason: "preset" });
-        } else if ((group === "jukeboxLoop" && mode === "jukebox") || (group === "eternalLoop" && mode === "eternal")) {
-            rebuildDriverForCurrentMode(true);
-        }
-        return cloneSettings(preset.settings);
-    };
-    window.exportAdvancedPreset = function(group, presetId) {
-        var preset = findPreset(group, presetId);
-        if (!preset) {
-            return null;
-        }
-        var payload = {
-            version: 1,
-            group: group,
-            name: preset.name,
-            settings: preset.settings
-        };
-        return JSON.stringify(payload, null, 2);
-    };
-    window.importAdvancedPreset = function(group, payload) {
-        if (!payload || typeof payload !== "object") {
-            return null;
-        }
-        var targetGroup = group || payload.group || "canonOverlay";
-        if (!advancedSettings[targetGroup]) {
-            return null;
-        }
-        var imported = saveAdvancedPreset(targetGroup, payload.name, payload.settings);
-        return imported;
     };
 }
 
@@ -1118,38 +817,6 @@ function ensureMinimumOffset(qlist, minAbsOffset, maxAbsOffset) {
     });
 }
 
-function setCanonAdvancedEnabled(enabled) {
-    var normalized = !!enabled;
-    if (normalized === canonAdvancedEnabled) {
-        return;
-    }
-    canonAdvancedEnabled = normalized;
-    setAdvancedGroupEnabledFlag("canonOverlay", normalized);
-    if (canonAdvancedEnabled && masterQs && masterQs.length) {
-        _.each(masterQs, function(q) {
-            calculateNearestNeighborsForQuantum(masterQs, q);
-        });
-    }
-    if (mode === "canon" && masterQs && masterQs.length) {
-        regenerateCanonMapping({ reason: "toggle" });
-    }
-    if (typeof window.onCanonModeChanged === "function") {
-        window.onCanonModeChanged(canonAdvancedEnabled);
-    }
-}
-
-function setEternalAdvancedEnabled(enabled) {
-    var normalized = !!enabled;
-    if (normalized === eternalAdvancedEnabled) {
-        return;
-    }
-    eternalAdvancedEnabled = normalized;
-    setAdvancedGroupEnabledFlag("eternalOverlay", normalized);
-    if (mode === "eternal" && masterQs && masterQs.length) {
-        regenerateEternalOverlay({ reason: "toggle" });
-    }
-}
-
 function augmentCanonNeighbors(qlist, alignment) {
     if (!alignment || !alignment.transitions || !alignment.transitions.length) {
         return;
@@ -1366,11 +1033,7 @@ function allReady() {
                 });
             }
         } else {
-            if (eternalAdvancedEnabled) {
-                regenerateEternalOverlay({ initial: true });
-            } else {
-                assignNormalizedVolumes(masterQs);
-            }
+            assignNormalizedVolumes(masterQs);
             if (typeof window.onCanonTrackReady === "function") {
                 window.onCanonTrackReady(null);
             }
@@ -1384,9 +1047,6 @@ function allReady() {
         if (typeof window.onCanonTrackReady === "function") {
             window.onCanonTrackReady(null);
         }
-    }
-    if (typeof window.onCanonModeChanged === "function") {
-        window.onCanonModeChanged(canonAdvancedEnabled);
     }
 
     isTrackReady = true;

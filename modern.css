@@ -238,7 +238,7 @@ body.playing-jukebox .music-field .music span:nth-child(5) {
     position: relative;
     z-index: 1;
     width: min(1400px, 96vw);
-    margin: 0 clamp(20px, 3vw, 56px) 0 auto;
+    margin: 0 auto 0 clamp(20px, 3vw, 56px);
     padding: clamp(12px, 2.4vw, 24px) clamp(14px, 3vw, 36px);
     display: grid;
     grid-template-columns: minmax(260px, 0.8fr) minmax(680px, 1.4fr);

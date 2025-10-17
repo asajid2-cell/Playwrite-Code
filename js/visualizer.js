@@ -68,6 +68,9 @@ var advancedSettings = {
     eternalLoop: cloneSettings(ADVANCED_DEFAULTS.eternalLoop)
 };
 
+var canonAdvancedEnabled = false;
+var canonSettings = advancedSettings.canonOverlay;
+
 var advancedEnabled = {
     canonOverlay: false,
     eternalOverlay: false,

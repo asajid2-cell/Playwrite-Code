@@ -87,6 +87,8 @@ var advancedPresets = {
     eternalLoop: []
 };
 
+var queuedAdvancedApplyTimers = Object.create(null);
+
 function cloneAdvancedState(group) {
     if (!advancedSettings[group]) {
         return {};
@@ -737,6 +739,7 @@ function regenerateOverlayFromSettings(settings, details) {
 }
 
 function updateCanonSetting(key, value) {
+    canonSettings = ensureAdvancedGroupSettings("canonOverlay");
     if (!canonSettings || key === undefined) {
         return;
     }
@@ -800,6 +803,10 @@ if (typeof window !== "undefined") {
             setEternalAdvancedEnabled(enabled);
             return;
         }
+        if (!enabled && queuedAdvancedApplyTimers[group]) {
+            clearTimeout(queuedAdvancedApplyTimers[group]);
+            queuedAdvancedApplyTimers[group] = null;
+        }
         setAdvancedGroupEnabledFlag(group, enabled);
         if ((group === "jukeboxLoop" && mode === "jukebox") || (group === "eternalLoop" && mode === "eternal")) {
             rebuildDriverForCurrentMode(true);
@@ -808,9 +815,32 @@ if (typeof window !== "undefined") {
     window.isAdvancedGroupEnabled = function(group) { return isAdvancedGroupEnabled(group); };
     window.updateAdvancedGroupSetting = function(group, key, value) {
         updateAdvancedGroupSetting(group, key, value);
+        if (group === "canonOverlay") {
+            updateCanonSetting(key, value);
+            return;
+        }
+        if (group === "eternalOverlay" && mode === "eternal" && eternalAdvancedEnabled) {
+            regenerateEternalOverlay({ reason: "ui" });
+            return;
+        }
+        if (!isAdvancedGroupEnabled(group)) {
+            return;
+        }
+        if (queuedAdvancedApplyTimers[group]) {
+            clearTimeout(queuedAdvancedApplyTimers[group]);
+        }
+        if (typeof window.applyAdvancedGroup === "function") {
+            queuedAdvancedApplyTimers[group] = setTimeout(function() {
+                queuedAdvancedApplyTimers[group] = null;
+                window.applyAdvancedGroup(group, { source: "ui" });
+            }, 90);
+        }
     };
     window.resetAdvancedGroup = function(group) {
         var snapshot = resetAdvancedGroupSettings(group);
+        if (group === "canonOverlay") {
+            canonSettings = ensureAdvancedGroupSettings("canonOverlay");
+        }
         if (group === "canonOverlay" && mode === "canon") {
             regenerateCanonMapping({ reason: "reset" });
         } else if (group === "eternalOverlay" && mode === "eternal") {
@@ -844,6 +874,9 @@ if (typeof window !== "undefined") {
             return null;
         }
         advancedSettings[group] = cloneSettings(preset.settings);
+        if (group === "canonOverlay") {
+            canonSettings = ensureAdvancedGroupSettings("canonOverlay");
+        }
         if (group === "canonOverlay" && mode === "canon") {
             regenerateCanonMapping({ reason: "preset" });
         } else if (group === "eternalOverlay" && mode === "eternal") {

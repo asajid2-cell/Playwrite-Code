@@ -604,6 +604,23 @@
             buildAdvancedUi();
         }
 
+        function disableAllAdvancedGroups() {
+            if (!advancedUiReady) {
+                return;
+            }
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                if (isGroupEnabled(groupKey)) {
+                    setGroupEnabled(groupKey, false);
+                }
+                setGroupInputsDisabled(groupKey, true);
+                setGroupCollapsed(groupKey, true);
+                const dom = advancedDomMap[groupKey];
+                if (dom && dom.toggle) {
+                    dom.toggle.checked = false;
+                }
+            });
+        }
+
         function setAdvancedVisibility(enabled) {
             const normalized = !!enabled;
             if (normalized === advancedSidebarVisible) {
@@ -620,6 +637,7 @@
                 showAdvancedSidebar();
                 window.setAdvancedPanelMode(currentModeKey);
             } else if (advancedSidebar) {
+                disableAllAdvancedGroups();
                 advancedSidebar.classList.add('hidden');
                 advancedSidebar.setAttribute('aria-hidden', 'true');
             }
@@ -662,16 +680,22 @@
         function handleAdvancedReset(event) {
             const button = event.currentTarget;
             const groupKey = button && button.dataset ? button.dataset.groupKey : null;
-            if (!groupKey || typeof window.resetAdvancedGroupSettings !== 'function') {
+            if (!groupKey || typeof window.resetAdvancedGroup !== 'function') {
                 return;
             }
-            window.resetAdvancedGroupSettings(groupKey);
+            window.resetAdvancedGroup(groupKey);
             syncGroupFromState(groupKey);
             scheduleAdvancedApply(groupKey, 'reset');
         }
 
         function scheduleAdvancedApply(groupKey, reason) {
-            if (!isGroupEnabled(groupKey) || typeof window.applyAdvancedGroup !== 'function') {
+            if (!isGroupEnabled(groupKey)) {
+                return;
+            }
+            if (reason === 'slider') {
+                return;
+            }
+            if (typeof window.applyAdvancedGroup !== 'function') {
                 return;
             }
             if (pendingApplyTimers[groupKey]) {
@@ -739,10 +763,11 @@
             if (dom.resetButton) {
                 dom.resetButton.disabled = disabledFlag;
             }
-        if (dom.groupNode) {
-            dom.groupNode.classList.toggle('is-disabled', disabledFlag);
+            if (dom.groupNode) {
+                dom.groupNode.classList.toggle('is-disabled', disabledFlag);
+                dom.groupNode.setAttribute('aria-disabled', disabledFlag ? 'true' : 'false');
+            }
         }
-    }
 
     function setGroupCollapsed(groupKey, collapsed) {
         const dom = advancedDomMap[groupKey];
@@ -788,6 +813,14 @@
                 if (!isGroupEnabled(groupKey)) {
                     setGroupEnabled(groupKey, true);
                 }
+                const dom = advancedDomMap[groupKey];
+                if (dom) {
+                    if (dom.toggle) {
+                        dom.toggle.checked = true;
+                    }
+                    setGroupInputsDisabled(groupKey, false);
+                }
+                syncGroupFromState(groupKey);
                 if (index === 0) {
                     setGroupCollapsed(groupKey, false);
                 }

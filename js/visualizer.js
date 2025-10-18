@@ -1502,6 +1502,9 @@ function setPlayingClass(modeName) {
     } else {
         baseNoteStrength = 0;
     }
+    if (typeof window.setAdvancedPanelMode === "function") {
+        window.setAdvancedPanelMode((modeName || "").toLowerCase());
+    }
     if (typeof window.setCanonUiVisibility === "function") {
         window.setCanonUiVisibility(modeName === "canon");
     }

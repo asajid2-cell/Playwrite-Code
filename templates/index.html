@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='modern.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='visualizer.css') }}">
 </head>
-<body class="page {% if track_id %}state-player{% else %}state-home{% endif %}" data-mode="{{ mode }}">
+<body class="page {% if track_id %}state-player{% else %}state-home{% endif %} advanced-collapsed" data-mode="{{ mode }}">
     <div class="music-field" aria-hidden="true">
         <div class="music track one"><span></span><span></span><span></span><span></span><span></span></div>
         <div class="music track two"><span></span><span></span><span></span><span></span><span></span></div>
@@ -97,45 +97,13 @@
                                 Autocanonizer
                             {% endif %}
                         </span>
+                        <button type="button" id="advanced-toggle" class="viz-button ghost advanced-toggle-button" aria-pressed="false">
+                            Advanced: Off
+                        </button>
                     </div>
                 </header>
                 <div class="viz-body">
                     <div class="viz-stage">
-                        <div id="canon-sidebar" class="canon-sidebar hidden">
-                            <div id="canon-controls" class="viz-tuning hidden">
-                                <button type="button" id="canon-settings-toggle" class="viz-button ghost">Canon Controls</button>
-                                <button type="button" id="canon-regenerate" class="viz-button ghost">Regenerate</button>
-                                <button type="button" id="canon-reset" class="viz-button ghost">Reset</button>
-                            </div>
-                            <div id="canon-settings-panel" class="canon-settings-panel hidden" aria-hidden="true">
-                                <div class="canon-setting-row">
-                                    <label for="canon-min-offset">Min Offset</label>
-                                    <input type="range" id="canon-min-offset" data-setting-key="minOffsetBeats" min="1" max="32" step="1" value="8">
-                                    <span class="canon-setting-value" data-setting-display="minOffsetBeats">8 beats</span>
-                                </div>
-                                <div class="canon-setting-row">
-                                    <label for="canon-max-offset">Max Offset</label>
-                                    <input type="range" id="canon-max-offset" data-setting-key="maxOffsetBeats" min="8" max="96" step="1" value="64">
-                                    <span class="canon-setting-value" data-setting-display="maxOffsetBeats">64 beats</span>
-                                </div>
-                                <div class="canon-setting-row">
-                                    <label for="canon-dwell">Hold Duration</label>
-                                    <input type="range" id="canon-dwell" data-setting-key="dwellBeats" min="1" max="16" step="1" value="6">
-                                    <span class="canon-setting-value" data-setting-display="dwellBeats">6 beats</span>
-                                </div>
-                                <div class="canon-setting-row">
-                                    <label for="canon-density">Texture</label>
-                                    <input type="range" id="canon-density" data-setting-key="density" min="1" max="5" step="1" value="2">
-                                    <span class="canon-setting-value" data-setting-display="density">Light (2/5)</span>
-                                </div>
-                                <div class="canon-setting-row">
-                                    <label for="canon-variation">Variation</label>
-                                    <input type="range" id="canon-variation" data-setting-key="variation" min="0" max="6" step="1" value="2">
-                                    <span class="canon-setting-value" data-setting-display="variation">2</span>
-                                </div>
-                                <p class="canon-settings-note">Adjust the canon voice in real-time. Tap Regenerate to explore alternate overlays without reloading your track.</p>
-                            </div>
-                        </div>
                         <div class="viz-status" id="status-panel"></div>
                         <div id="error"></div>
                         <div id="tiles" class="tiles-canvas"></div>
@@ -144,31 +112,12 @@
                         </footer>
                     </div>
                     <aside class="viz-sidebar hidden" id="advanced-sidebar">
-                        <div id="advanced-controls-header" class="advanced-controls-header hidden">
-                            <div id="advanced-group-buttons" class="advanced-group-buttons"></div>
-                            <label class="advanced-mode-toggle">
-                                <input type="checkbox" id="advanced-mode-toggle">
-                                <span>Advanced mode</span>
-                            </label>
-                            <button type="button" id="advanced-apply" class="viz-button ghost">Apply</button>
-                            <button type="button" id="advanced-reset" class="viz-button ghost">Reset</button>
-                        </div>
-                        <div id="advanced-settings-panel" class="advanced-settings-panel hidden" aria-hidden="true">
-                            <div id="advanced-control-container" class="advanced-control-container"></div>
-                            <div class="preset-panel">
-                                <div class="preset-save-row">
-                                    <input type="text" id="preset-name" placeholder="Preset name">
-                                    <button type="button" id="preset-save" class="viz-button ghost">Save</button>
-                                    <button type="button" id="preset-download" class="viz-button ghost">Download</button>
-                                </div>
-                                <div class="preset-import-row">
-                                    <label class="preset-upload viz-button ghost">
-                                        <input type="file" id="preset-upload" accept="application/json">
-                                        Import
-                                    </label>
-                                </div>
-                                <div id="preset-list" class="preset-list"></div>
-                            </div>
+                        <div class="advanced-shell" id="advanced-shell">
+                            <header class="advanced-header">
+                                <h3>Advanced Settings</h3>
+                                <p>Fine-tune how each engine behaves. Changes apply immediately.</p>
+                            </header>
+                            <div class="advanced-sections" id="advanced-sections"></div>
                         </div>
                     </aside>
                 </div>
@@ -198,7 +147,7 @@
         const youtubePane = document.getElementById('youtube-pane');
         const form = document.getElementById('process-form');
         const statusPanel = document.getElementById('form-status');
-        const modeFromBody = body.dataset.mode || "canon";
+        const modeFromBody = (body.dataset.mode || "canon").toLowerCase();
         let currentModeKey = modeFromBody;
 
         const setState = (state) => {
@@ -245,12 +194,9 @@
             }
             const targetMode = button.dataset.algorithm;
             syncAlgorithmButtons(targetMode);
-            currentModeKey = targetMode;
+            currentModeKey = (targetMode || '').toLowerCase();
             body.dataset.mode = targetMode;
-            populateAdvancedGroups(currentModeKey);
-            if (currentAdvancedGroup) {
-                renderAdvancedControls(currentAdvancedGroup);
-            }
+            window.setAdvancedPanelMode(currentModeKey);
         });
 
         sourceToggle.addEventListener('click', (event) => {
@@ -313,338 +259,82 @@
                 submitButton.textContent = 'Transform Track';
             }
         });
-        const canonSidebar = document.getElementById('canon-sidebar');
-        const canonControls = document.getElementById('canon-controls');
-        const canonPanel = document.getElementById('canon-settings-panel');
-        const canonToggleBtn = document.getElementById('canon-settings-toggle');
-        const canonRegenerateBtn = document.getElementById('canon-regenerate');
-        const canonResetBtn = document.getElementById('canon-reset');
-        const densityLabels = ['Sparse', 'Light', 'Balanced', 'Rich', 'Dense'];
-        const defaultCanonSettings = {
-            minOffsetBeats: 8,
-            maxOffsetBeats: 64,
-            dwellBeats: 6,
-            density: 2,
-            variation: 2
-        };
 
-        function connectSlider(id, key, formatter, defaultValue) {
-            const input = document.getElementById(id);
-            const display = document.querySelector(`[data-setting-display="${key}"]`);
-            if (!input) {
+        const advancedToggleButton = document.getElementById('advanced-toggle');
+        const advancedSidebar = document.getElementById('advanced-sidebar');
+        const advancedShell = document.getElementById('advanced-shell');
+        const advancedSectionsRoot = document.getElementById('advanced-sections');
+
+        body.classList.add('advanced-collapsed');
+
+        let advancedSidebarVisible = false;
+
+        function updateAdvancedToggleState() {
+            if (!advancedToggleButton) {
                 return;
             }
-            const formatValue = formatter || ((val) => val);
-            const updateDisplay = (val) => {
-                if (display) {
-                    display.textContent = formatValue(val);
-                }
-            };
-            const parse = (val) => parseInt(val, 10) || 0;
-            updateDisplay(parse(input.value));
-            input.addEventListener('input', () => {
-                const numeric = parse(input.value);
-                updateDisplay(numeric);
-                if (typeof window.updateCanonSetting === 'function') {
-                    window.updateCanonSetting(key, numeric);
-                }
-            });
-            if (defaultValue !== undefined) {
-                const min = input.min ? parseInt(input.min, 10) : defaultValue;
-                const max = input.max ? parseInt(input.max, 10) : defaultValue;
-                const initial = Math.min(max, Math.max(min, defaultValue));
-                input.value = initial;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
+            advancedToggleButton.setAttribute('aria-pressed', advancedSidebarVisible ? 'true' : 'false');
+            advancedToggleButton.classList.toggle('active', advancedSidebarVisible);
+            advancedToggleButton.textContent = advancedSidebarVisible ? 'Advanced: On' : 'Advanced: Off';
         }
 
-        connectSlider('canon-min-offset', 'minOffsetBeats', (v) => `${v} beats`, defaultCanonSettings.minOffsetBeats);
-        connectSlider('canon-max-offset', 'maxOffsetBeats', (v) => `${v} beats`, defaultCanonSettings.maxOffsetBeats);
-        connectSlider('canon-dwell', 'dwellBeats', (v) => `${v} beats`, defaultCanonSettings.dwellBeats);
-        connectSlider('canon-density', 'density', (v) => {
-            const index = Math.min(densityLabels.length - 1, Math.max(0, v - 1));
-            return `${densityLabels[index]} (${v}/5)`;
-        }, defaultCanonSettings.density);
-        connectSlider('canon-variation', 'variation', (v) => v.toString(), defaultCanonSettings.variation);
-
-        const minOffsetSlider = document.getElementById('canon-min-offset');
-        const maxOffsetSlider = document.getElementById('canon-max-offset');
-        if (minOffsetSlider && maxOffsetSlider) {
-            const syncMaxMin = () => {
-                const minVal = parseInt(minOffsetSlider.value, 10) || 1;
-                const maxVal = parseInt(maxOffsetSlider.value, 10) || (minVal + 1);
-                const newMin = Math.max(2, minVal + 1);
-                maxOffsetSlider.min = newMin;
-                if (maxVal <= minVal) {
-                    maxOffsetSlider.value = newMin;
-                    maxOffsetSlider.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-            };
-            minOffsetSlider.addEventListener('input', syncMaxMin);
-            syncMaxMin();
+        if (advancedSidebar) {
+            advancedSidebar.classList.add('hidden');
+            advancedSidebar.setAttribute('aria-hidden', 'true');
         }
 
-        const canonAdvancedToggle = document.getElementById('canon-advanced-toggle');
-        const sliderElements = canonPanel ? Array.from(canonPanel.querySelectorAll('input[type="range"]')) : [];
-        const controlButtons = [canonToggleBtn, canonRegenerateBtn, canonResetBtn];
-        const defaultCanonSliderMap = [
-            ['canon-min-offset', 'minOffsetBeats'],
-            ['canon-max-offset', 'maxOffsetBeats'],
-            ['canon-dwell', 'dwellBeats'],
-            ['canon-density', 'density'],
-            ['canon-variation', 'variation']
-        ];
-
-        const showCanonPanel = () => {
-            if (!canonPanel) {
+        function showAdvancedSidebar() {
+            if (!advancedSidebarVisible || !advancedSidebar) {
                 return;
             }
-            canonPanel.classList.remove('hidden');
-            canonPanel.setAttribute('aria-hidden', 'false');
-        };
+            advancedSidebar.classList.remove('hidden');
+            advancedSidebar.removeAttribute('aria-hidden');
+        }
 
-        const hideCanonPanel = () => {
-            if (!canonPanel) {
+        function syncAdvancedUiForMode(modeKey) {
+            if (!advancedSidebarVisible) {
                 return;
             }
-            canonPanel.classList.add('hidden');
-            canonPanel.setAttribute('aria-hidden', 'true');
-        };
-
-        const dispatchSliderInput = (slider) => {
-            slider.dispatchEvent(new Event('input', { bubbles: true }));
-        };
-
-        const applyCanonSliderValues = () => {
-            sliderElements.forEach((slider) => dispatchSliderInput(slider));
-        };
-
-        const resetCanonSliders = (dispatch = true) => {
-            defaultCanonSliderMap.forEach(([id, key]) => {
-                const slider = document.getElementById(id);
-                if (!slider) {
-                    return;
-                }
-                const base = defaultCanonSettings[key];
-                const min = slider.min ? parseInt(slider.min, 10) : base;
-                const max = slider.max ? parseInt(slider.max, 10) : base;
-                const target = Math.min(max, Math.max(min, base));
-                slider.value = target;
-                if (dispatch) {
-                    dispatchSliderInput(slider);
-                }
-            });
-        };
-
-        const setCanonControlsEnabled = (enabled) => {
-            const allow = !!enabled;
-            sliderElements.forEach((el) => {
-                el.disabled = !allow;
-            });
-            controlButtons.forEach((btn) => {
-                if (btn) {
-                    btn.disabled = !allow;
-                }
-            });
-            if (!allow && canonPanel) {
-                canonPanel.classList.add('hidden');
-                canonPanel.setAttribute('aria-hidden', 'true');
-            }
-        };
-
-        setCanonControlsEnabled(false);
-
-        if (canonAdvancedToggle) {
-            canonAdvancedToggle.checked = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
-            canonAdvancedToggle.addEventListener('change', () => {
-                const enabled = canonAdvancedToggle.checked;
-                if (typeof window.setCanonAdvancedEnabled === 'function') {
-                    window.setCanonAdvancedEnabled(enabled);
-                }
-                if (enabled) {
-                    setCanonControlsEnabled(true);
-                    showCanonPanel();
-                    applyCanonSliderValues();
-                } else {
-                    resetCanonSliders(true);
-                    setCanonControlsEnabled(false);
-                    hideCanonPanel();
-                }
-            });
-        }
-
-        if (canonToggleBtn && canonPanel) {
-            canonToggleBtn.addEventListener('click', () => {
-                const isHidden = canonPanel.classList.toggle('hidden');
-                canonPanel.setAttribute('aria-hidden', isHidden ? 'true' : 'false');
-            });
-        }
-
-        if (canonRegenerateBtn) {
-            canonRegenerateBtn.addEventListener('click', () => {
-                if (typeof window.regenerateCanonMappingManually === 'function') {
-                    window.regenerateCanonMappingManually();
-                }
-            });
-        }
-
-        if (canonResetBtn) {
-            canonResetBtn.addEventListener('click', () => {
-                resetCanonSliders(true);
-            });
+            const normalized = (modeKey || currentModeKey || 'canon').toLowerCase();
+            currentModeKey = normalized;
+            primeGroupLayoutForMode(currentModeKey);
+            showAdvancedSidebar();
         }
 
         window.setCanonUiVisibility = (visible) => {
-            if (!canonControls) {
-                return;
-            }
-            if (canonSidebar) {
-                canonSidebar.classList.toggle('hidden', !visible);
-            }
-            canonControls.classList.toggle('hidden', !visible);
-            if (!visible && canonPanel) {
-                canonPanel.classList.add('hidden');
-                canonPanel.setAttribute('aria-hidden', 'true');
-            }
-            if (!visible) {
-                setCanonControlsEnabled(false);
-            } else {
-                const current = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
-                setCanonControlsEnabled(current);
-                if (canonAdvancedToggle) {
-                    canonAdvancedToggle.checked = current;
-                }
+            if (visible && advancedSidebarVisible) {
+                window.setAdvancedPanelMode('canon');
             }
         };
 
-        $(function() {
-            const $vizPanel = $('#viz-panel');
-            if (!$vizPanel.length || typeof $vizPanel.draggable !== 'function') {
+        window.setAdvancedPanelMode = (modeKey) => {
+            const normalized = (modeKey || currentModeKey || 'canon').toLowerCase();
+            currentModeKey = normalized;
+            pendingAdvancedMode = normalized;
+            if (!advancedSidebarVisible) {
                 return;
             }
-            const $layout = $('.layout');
-            $vizPanel.draggable({
-                handle: '.viz-header',
-                containment: $layout.length ? $layout : 'body',
-                scroll: false
-            });
-        });
-
-        window.onCanonTrackReady = (payload) => {
-            if (!canonControls) {
-                return;
-            }
-            if (!payload || !payload.beats) {
-                if (canonSidebar) {
-                    canonSidebar.classList.add('hidden');
-                }
-                canonControls.classList.add('hidden');
-                if (canonPanel) {
-                    canonPanel.classList.add('hidden');
-                    canonPanel.setAttribute('aria-hidden', 'true');
-                }
-                setCanonControlsEnabled(false);
-                return;
-            }
-            if (canonSidebar) {
-                canonSidebar.classList.remove('hidden');
-            }
-            canonControls.classList.remove('hidden');
-            const beats = payload.beats;
-            if (payload.minOffsetBeats) {
-                defaultCanonSettings.minOffsetBeats = payload.minOffsetBeats;
-            }
-            if (payload.maxOffsetBeats) {
-                defaultCanonSettings.maxOffsetBeats = payload.maxOffsetBeats;
-            }
-            const minSlider = document.getElementById('canon-min-offset');
-            const maxSlider = document.getElementById('canon-max-offset');
-            if (minSlider) {
-                const maxForMin = Math.max(1, Math.min(64, Math.max(1, Math.floor((beats - 1) / 2))));
-                minSlider.max = Math.max(1, maxForMin);
-                const minValue = Math.min(payload.minOffsetBeats || defaultCanonSettings.minOffsetBeats, maxForMin);
-                minSlider.value = minValue;
-                minSlider.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            if (maxSlider) {
-                const cap = beats > 0 ? Math.max(2, beats - 1) : defaultCanonSettings.maxOffsetBeats;
-                maxSlider.max = cap;
-                const minCandidate = Math.max(2, Math.min(8, cap - 1));
-                let minSetting = Math.min(minCandidate, cap - 1);
-                if (minSetting >= cap) {
-                    minSetting = Math.max(2, cap - 1);
-                }
-                maxSlider.min = Math.max(2, minSetting);
-                const maxValue = Math.min(payload.maxOffsetBeats || defaultCanonSettings.maxOffsetBeats, cap);
-                maxSlider.value = maxValue;
-                maxSlider.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            const currentAdvanced = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
-            setCanonControlsEnabled(currentAdvanced);
-            if (canonAdvancedToggle) {
-                canonAdvancedToggle.checked = currentAdvanced;
-            }
-            if (currentAdvanced) {
-                showCanonPanel();
-            }
+            ensureAdvancedUi();
+            ensureModeDefaults(currentModeKey);
+            syncAdvancedSectionsForMode(currentModeKey);
+            syncAdvancedUiForMode(currentModeKey);
         };
 
-        window.onCanonModeChanged = (enabled) => {
-            setCanonControlsEnabled(enabled);
-            if (canonAdvancedToggle) {
-                canonAdvancedToggle.checked = !!enabled;
-            }
-            if (!enabled) {
-                hideCanonPanel();
-            }
-        };
-
-        const advancedSidebar = document.getElementById('advanced-sidebar');
-        const advancedControlsHeader = document.getElementById('advanced-controls-header');
-        const advancedGroupButtons = document.getElementById('advanced-group-buttons');
-        const advancedModeToggle = document.getElementById('advanced-mode-toggle');
-        const advancedApplyButton = document.getElementById('advanced-apply');
-        const advancedResetButton = document.getElementById('advanced-reset');
-        const advancedSettingsPanel = document.getElementById('advanced-settings-panel');
-        const advancedContainer = document.getElementById('advanced-control-container');
-        const presetNameInput = document.getElementById('preset-name');
-        const presetSaveButton = document.getElementById('preset-save');
-        const presetDownloadButton = document.getElementById('preset-download');
-        const presetUploadInput = document.getElementById('preset-upload');
-        const presetList = document.getElementById('preset-list');
-
-        const advancedGroupConfig = {
+        const ADVANCED_GROUP_METADATA = {
             canonOverlay: {
-                label: 'Autocanonizer Overlay',
-                shortLabel: 'Canon Overlay',
-                description: 'Tune how the canon overlay enters, how dense it is, and how much variation it allows.',
-                tooltip: 'Retune the live Autocanonizer overlay spacing, dwell, and texture.',
+                title: 'Overlay Behaviour',
+                description: 'Set spacing, dwell, and texture for the live Autocanonizer voices.',
                 fields: [
                     { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation between overlay voices.' },
                     { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest allowed beat offset between overlay voices.' },
-                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats to remain on a pairing before retargeting.' },
-                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add more simultaneous overlay activity.' },
+                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats to stay on a pairing before retargeting.' },
+                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add more simultaneous overlay voices.' },
                     { key: 'variation', label: 'Variation', min: 0, max: 10, step: 1, format: (v) => `${v}`, description: 'Controls how adventurous the overlay can be when rewiring connections.' }
                 ]
             },
-            eternalOverlay: {
-                label: 'Eternal Canonizer Overlay',
-                shortLabel: 'Eternal Overlay',
-                description: 'Shape the multivoice overlay used in Eternal Canonizer mode.',
-                tooltip: 'Sculpt how Eternal Canonizer layers and regenerates its overlay voices.',
-                fields: [
-                    { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation for the overlay voices.' },
-                    { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest beat separation for overlay voices.' },
-                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats before switching overlay target.' },
-                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add thicker overlays.' },
-                    { key: 'variation', label: 'Variation', min: 0, max: 10, step: 1, format: (v) => `${v}`, description: 'Controls how much the overlay may deviate from its base pattern.' }
-                ]
-            },
             jukeboxLoop: {
-                label: 'Eternal Jukebox Loops',
-                shortLabel: 'Jukebox Loop',
-                description: 'Adjust how the Eternal Jukebox chooses loops and when it jumps between sections.',
-                tooltip: 'Control Eternal Jukebox loop length, similarity threshold, and jump variety.',
+                title: 'Loop Pathing',
+                description: 'Dial in how Eternal Jukebox picks loops and when it moves on.',
                 fields: [
                     { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest loop allowed when picking jump targets.' },
                     { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats to play before forcing a jump.' },
@@ -653,14 +343,23 @@
                     { key: 'jumpVariance', label: 'Jump Variance', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%`, description: 'Higher values encourage varied jump timing; lower values keep loops tighter.' }
                 ]
             },
+            eternalOverlay: {
+                title: 'Overlay Behaviour',
+                description: 'Shape the multivoice overlay used in Eternal Canonizer mode.',
+                fields: [
+                    { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation for overlay voices.' },
+                    { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest beat separation for overlay voices.' },
+                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats before switching overlay targets.' },
+                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add thicker overlays.' },
+                    { key: 'variation', label: 'Variation', min: 0, max: 10, step: 1, format: (v) => `${v}`, description: 'Controls how much the overlay may deviate from its base pattern.' }
+                ]
+            },
             eternalLoop: {
-                label: 'Eternal Canonizer Loops',
-                shortLabel: 'Eternal Loop',
+                title: 'Loop Pathing',
                 description: 'Control loop behaviour when running the Eternal Canonizer.',
-                tooltip: 'Balance Eternal Canonizer loop length, similarity, and sectional bias.',
                 fields: [
                     { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest allowed loop when chaining canon segments.' },
-                    { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats to play before forcing a jump to another segment.' },
+                    { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats before forcing a jump to another segment.' },
                     { key: 'loopThreshold', label: 'Similarity Threshold', min: 0.3, max: 0.95, step: 0.01, format: (v) => `${Math.round(v * 100)}%`, description: 'Higher values require stronger similarity before loops are used.' },
                     { key: 'sectionBias', label: 'Section Bias', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}% in-section`, description: 'Controls how strongly the canon prefers staying within a section when looping.' },
                     { key: 'jumpVariance', label: 'Jump Variance', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%`, description: 'Influences how surprising the loop timing can be.' }
@@ -668,291 +367,464 @@
             }
         };
 
+        const ADVANCED_SECTION_LAYOUT = [
+            {
+                id: 'canon',
+                label: 'Autocanonizer',
+                summary: 'Control how the live canon overlay weaves through the track.',
+                groups: ['canonOverlay']
+            },
+            {
+                id: 'jukebox',
+                label: 'Eternal Jukebox',
+                summary: 'Shape how the jukebox chooses and times its infinite loops.',
+                groups: ['jukeboxLoop']
+            },
+            {
+                id: 'eternal',
+                label: 'Eternal Canonizer',
+                summary: 'Balance overlay density with the looping engine for long-form canons.',
+                groups: ['eternalOverlay', 'eternalLoop']
+            }
+        ];
 
-        const ADVANCED_GROUPS_BY_MODE = {
+        const MODE_TO_SECTION_IDS = {
+            canon: ['canon'],
+            jukebox: ['jukebox'],
+            eternal: ['eternal', 'canon', 'jukebox']
+        };
+
+        const advancedDomMap = Object.create(null);
+        const advancedSectionNodes = Object.create(null);
+        const pendingApplyTimers = Object.create(null);
+        let advancedUiReady = false;
+        let pendingAdvancedMode = currentModeKey;
+
+        const MODE_PRIMARY_GROUPS = {
             canon: ['canonOverlay'],
             jukebox: ['jukeboxLoop'],
-            eternal: ['eternalOverlay', 'eternalLoop', 'canonOverlay', 'jukeboxLoop']
+            eternal: ['eternalOverlay', 'eternalLoop']
         };
-        const ALL_ADVANCED_GROUPS = Object.keys(advancedGroupConfig);
 
-        let currentAdvancedGroup = null;
-        let advancedValueDisplays = {};
-        let advancedDescriptionNode = null;
-
-        if (backButton) {
-            backButton.addEventListener('click', (event) => {
-                event.preventDefault();
-                const search = new URLSearchParams(window.location.search);
-                search.delete('trid');
-                search.delete('mode');
-                const query = search.toString();
-                window.location.href = query ? `/?${query}` : '/';
-            });
-        }
-
-        if (advancedSidebar && advancedControlsHeader && advancedGroupButtons && typeof window.getAdvancedSettings === 'function') {
-            initializeAdvancedSidebar();
-        }
-
-        function initializeAdvancedSidebar() {
-            advancedSidebar.classList.remove('hidden');
-            advancedControlsHeader.classList.remove('hidden');
-            if (advancedSettingsPanel) {
-                advancedSettingsPanel.classList.remove('hidden');
-                if (!advancedDescriptionNode) {
-                    advancedDescriptionNode = document.createElement('p');
-                    advancedDescriptionNode.className = "advanced-description";
-                    advancedDescriptionNode.id = "advanced-group-description";
-                    advancedSettingsPanel.insertBefore(advancedDescriptionNode, advancedSettingsPanel.firstChild);
-                }
-            }
-            populateAdvancedGroups(currentModeKey);
-            bindAdvancedEvents();
-            if (currentAdvancedGroup) {
-                renderAdvancedControls(currentAdvancedGroup);
-            }
-        }
-
-        function getAllowedGroups(modeKey) {
-            const normalized = (modeKey || '').toLowerCase();
-            const allowed = ADVANCED_GROUPS_BY_MODE[normalized];
-            if (!allowed || !allowed.length) {
-                return ALL_ADVANCED_GROUPS.slice();
-            }
-            return allowed.slice();
-        }
-
-        function setActiveGroupButton(groupKey) {
-            if (!advancedGroupButtons) {
+        function buildAdvancedUi() {
+            if (!advancedSidebar || !advancedShell || !advancedSectionsRoot) {
                 return;
             }
-            const buttons = advancedGroupButtons.querySelectorAll('.advanced-group-button');
-            buttons.forEach((btn) => {
-                btn.classList.toggle('active', btn.dataset.group === groupKey);
-            });
-        }
-
-        function populateAdvancedGroups(modeKey) {
-            if (!advancedGroupButtons) {
+            if (typeof window.getAdvancedSettings !== 'function' || typeof window.updateAdvancedGroupSetting !== 'function') {
                 return;
             }
-            const entries = getAllowedGroups(modeKey);
-            advancedGroupButtons.innerHTML = '';
-            advancedGroupButtons.classList.toggle('hidden', entries.length <= 1);
-            if (!entries.length) {
-                currentAdvancedGroup = null;
-                advancedContainer.innerHTML = '';
-                if (advancedModeToggle) { advancedModeToggle.checked = false; }
-                return;
-            }
-            entries.forEach((key) => {
-                const groupInfo = advancedGroupConfig[key];
-                if (!groupInfo) {
-                    return;
-                }
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'advanced-group-button';
-                button.dataset.group = key;
-                button.textContent = groupInfo.shortLabel || groupInfo.label;
-                if (entries.length === 1) {
-                    button.disabled = true;
-                }
-                button.title = groupInfo.tooltip || groupInfo.description || groupInfo.label;
-                button.addEventListener('click', () => {
-                    if (currentAdvancedGroup === key) {
-                        return;
-                    }
-                    currentAdvancedGroup = key;
-                    setActiveGroupButton(key);
-                    renderAdvancedControls(key);
-                });
-                advancedGroupButtons.appendChild(button);
-            });
-            if (entries.indexOf(currentAdvancedGroup) === -1) {
-                currentAdvancedGroup = entries[0];
-            }
-            setActiveGroupButton(currentAdvancedGroup);
-            if (currentAdvancedGroup) {
-                renderAdvancedControls(currentAdvancedGroup);
-            }
-        }
 
-        function bindAdvancedEvents() {
-            if (advancedModeToggle) {
-                advancedModeToggle.addEventListener('change', () => {
-                    if (!currentAdvancedGroup) {
+            advancedSectionsRoot.innerHTML = '';
+            Object.keys(advancedDomMap).forEach((key) => { delete advancedDomMap[key]; });
+            Object.keys(advancedSectionNodes).forEach((key) => { delete advancedSectionNodes[key]; });
+
+            ADVANCED_SECTION_LAYOUT.forEach((sectionConfig) => {
+                const sectionNode = document.createElement('section');
+                sectionNode.className = 'advanced-section';
+                sectionNode.dataset.sectionMode = sectionConfig.id;
+
+                const sectionHeader = document.createElement('header');
+                sectionHeader.className = 'advanced-section-header';
+
+                const headerTitle = document.createElement('h4');
+                headerTitle.textContent = sectionConfig.label;
+                sectionHeader.appendChild(headerTitle);
+
+                if (sectionConfig.summary) {
+                    const summaryNode = document.createElement('p');
+                    summaryNode.className = 'advanced-section-summary';
+                    summaryNode.textContent = sectionConfig.summary;
+                    sectionHeader.appendChild(summaryNode);
+                }
+
+                sectionNode.appendChild(sectionHeader);
+
+                sectionConfig.groups.forEach((groupKey) => {
+                    const meta = ADVANCED_GROUP_METADATA[groupKey];
+                    if (!meta) {
                         return;
                     }
-                    const enabled = advancedModeToggle.checked;
-                    window.setAdvancedGroupEnabled(currentAdvancedGroup, enabled);
-                    setAdvancedControlsDisabled(!enabled);
-                });
-            }
-            if (advancedApplyButton) {
-                advancedApplyButton.addEventListener('click', () => {
-                    if (!currentAdvancedGroup) {
-                        return;
+
+                    const groupNode = document.createElement('article');
+                    groupNode.className = 'advanced-group';
+                    groupNode.dataset.groupKey = groupKey;
+
+                    const groupHeader = document.createElement('div');
+                    groupHeader.className = 'advanced-group-header';
+
+                    const titleNode = document.createElement('h5');
+                    titleNode.className = 'advanced-group-title';
+                    titleNode.textContent = meta.title;
+                    groupHeader.appendChild(titleNode);
+
+                    const collapseButton = document.createElement('button');
+                    collapseButton.type = 'button';
+                    collapseButton.className = 'advanced-collapse-btn';
+                    collapseButton.setAttribute('aria-label', `Toggle ${meta.title} settings`);
+                    collapseButton.setAttribute('aria-expanded', 'false');
+                    collapseButton.innerHTML = '<span class="chevron"></span>';
+
+                    const toggleLabel = document.createElement('label');
+                    toggleLabel.className = 'advanced-group-toggle';
+
+                    const toggle = document.createElement('input');
+                    toggle.type = 'checkbox';
+                    toggle.dataset.groupKey = groupKey;
+                    toggle.id = `advanced-toggle-${groupKey}`;
+                    toggleLabel.appendChild(toggle);
+
+                    const toggleText = document.createElement('span');
+                    toggleText.textContent = 'Enable custom settings';
+                    toggleLabel.appendChild(toggleText);
+
+                    groupHeader.appendChild(toggleLabel);
+                    groupHeader.appendChild(collapseButton);
+                    groupNode.appendChild(groupHeader);
+
+                    const bodyWrapper = document.createElement('div');
+                    bodyWrapper.className = 'advanced-group-body';
+                    groupNode.appendChild(bodyWrapper);
+
+                    if (meta.description) {
+                        const descriptionNode = document.createElement('p');
+                        descriptionNode.className = 'advanced-group-description';
+                        descriptionNode.textContent = meta.description;
+                        bodyWrapper.appendChild(descriptionNode);
                     }
-                    window.applyAdvancedGroup(currentAdvancedGroup, { source: 'manual' });
-                });
-            }
-            if (advancedResetButton) {
-                advancedResetButton.addEventListener('click', () => {
-                    if (!currentAdvancedGroup) {
-                        return;
-                    }
-                    window.resetAdvancedGroup(currentAdvancedGroup);
-                    renderAdvancedControls(currentAdvancedGroup);
-                });
-            }
-            if (presetSaveButton) {
-                presetSaveButton.addEventListener('click', () => {
-                    if (!currentAdvancedGroup) {
-                        return;
-                    }
-                    const rawName = presetNameInput ? presetNameInput.value.trim() : '';
-                    window.saveAdvancedPreset(currentAdvancedGroup, rawName || undefined);
-                    if (presetNameInput) {
-                        presetNameInput.value = '';
-                    }
-                    refreshPresetList(currentAdvancedGroup);
-                });
-            }
-            if (presetDownloadButton) {
-                presetDownloadButton.addEventListener('click', () => {
-                    if (!currentAdvancedGroup) {
-                        return;
-                    }
-                    const state = window.getAdvancedSettings(currentAdvancedGroup);
-                    if (!state || !state.settings) {
-                        return;
-                    }
-                    const payload = {
-                        version: 1,
-                        group: currentAdvancedGroup,
-                        name: `${advancedGroupConfig[currentAdvancedGroup].label} preset`,
-                        settings: state.settings
-                    };
-                    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const downloader = document.createElement('a');
-                    downloader.href = url;
-                    downloader.download = `${currentAdvancedGroup}-settings.json`;
-                    document.body.appendChild(downloader);
-                    downloader.click();
-                    document.body.removeChild(downloader);
-                    URL.revokeObjectURL(url);
-                });
-            }
-            if (presetUploadInput) {
-                presetUploadInput.addEventListener('change', (event) => {
-                    if (!currentAdvancedGroup) {
-                        return;
-                    }
-                    const file = event.target.files && event.target.files[0];
-                    if (!file) {
-                        return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        try {
-                            const parsed = JSON.parse(reader.result || '{}');
-                            window.importAdvancedPreset(currentAdvancedGroup, parsed);
-                            refreshPresetList(currentAdvancedGroup);
-                            renderAdvancedControls(currentAdvancedGroup);
-                        } catch (err) {
-                            console.error('Failed to import preset', err);
+
+                    const fieldsContainer = document.createElement('div');
+                    fieldsContainer.className = 'advanced-fields';
+                    bodyWrapper.appendChild(fieldsContainer);
+
+                    const inputs = Object.create(null);
+                    const valueLabels = Object.create(null);
+                    const fieldMeta = Object.create(null);
+
+                    meta.fields.forEach((field) => {
+                        const control = document.createElement('div');
+                        control.className = 'advanced-control';
+
+                        const topLine = document.createElement('div');
+                        topLine.className = 'advanced-control-topline';
+
+                        const labelNode = document.createElement('label');
+                        labelNode.className = 'advanced-control-label';
+                        labelNode.htmlFor = `advanced-${groupKey}-${field.key}`;
+                        labelNode.textContent = field.label;
+                        topLine.appendChild(labelNode);
+
+                        const valueNode = document.createElement('span');
+                        valueNode.className = 'advanced-control-value';
+                        topLine.appendChild(valueNode);
+
+                        control.appendChild(topLine);
+
+                        const input = document.createElement('input');
+                        input.type = 'range';
+                        input.min = field.min;
+                        input.max = field.max;
+                        if (field.step !== undefined) {
+                            input.step = field.step;
+                        } else if (field.max - field.min <= 1) {
+                            input.step = 0.01;
                         }
+                        input.id = `advanced-${groupKey}-${field.key}`;
+                        input.dataset.groupKey = groupKey;
+                        input.dataset.fieldKey = field.key;
+
+                        control.appendChild(input);
+
+                        if (field.description) {
+                            const hint = document.createElement('p');
+                            hint.className = 'advanced-control-hint';
+                            hint.textContent = field.description;
+                            control.appendChild(hint);
+                        }
+
+                        fieldsContainer.appendChild(control);
+
+                        inputs[field.key] = input;
+                        valueLabels[field.key] = valueNode;
+                        fieldMeta[field.key] = field;
+
+                        input.addEventListener('input', handleAdvancedFieldInput);
+                    });
+
+                    const resetButton = document.createElement('button');
+                    resetButton.type = 'button';
+                    resetButton.className = 'viz-button ghost advanced-reset-button';
+                    resetButton.dataset.groupKey = groupKey;
+                    resetButton.textContent = 'Reset to defaults';
+                    resetButton.addEventListener('click', handleAdvancedReset);
+                    bodyWrapper.appendChild(resetButton);
+
+                    toggle.addEventListener('change', handleAdvancedToggle);
+
+                    advancedDomMap[groupKey] = {
+                        groupNode,
+                        toggle,
+                        body: bodyWrapper,
+                        collapseButton,
+                        inputs,
+                        valueLabels,
+                        fieldMeta,
+                        resetButton,
+                        fieldsContainer
                     };
-                    reader.readAsText(file);
-                    presetUploadInput.value = '';
+
+                    collapseButton.addEventListener('click', () => {
+                        const dom = advancedDomMap[groupKey];
+                        if (!dom) {
+                            return;
+                        }
+                        const collapsed = dom.groupNode.classList.contains('is-collapsed');
+                        setGroupCollapsed(groupKey, !collapsed);
+                    });
+
+                    sectionNode.appendChild(groupNode);
+                    setGroupCollapsed(groupKey, true);
                 });
-            }
+
+                advancedSectionsRoot.appendChild(sectionNode);
+                advancedSectionNodes[sectionConfig.id] = sectionNode;
+            });
+
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                syncGroupFromState(groupKey);
+            });
+
+            advancedUiReady = true;
+            window.setAdvancedPanelMode(pendingAdvancedMode);
         }
 
-        function renderAdvancedControls(group) {
-            const config = advancedGroupConfig[group];
-            if (!config || !advancedContainer) {
+        function ensureAdvancedUi() {
+            if (advancedUiReady) {
                 return;
             }
-            currentAdvancedGroup = group;
-            setActiveGroupButton(currentAdvancedGroup);
-            const state = window.getAdvancedSettings(group) || { settings: {}, defaults: {}, enabled: false };
-            const defaults = state.defaults || {};
-            advancedValueDisplays = {};
-            advancedContainer.innerHTML = '';
-            const title = document.createElement('div');
-            title.className = 'advanced-group-title';
-            title.textContent = config.label;
-            advancedContainer.appendChild(title);
-            if (advancedDescriptionNode) {
-                advancedDescriptionNode.textContent = config.description || '';
-                advancedDescriptionNode.classList.toggle('hidden', !config.description);
-            }
-            config.fields.forEach((field) => {
-                const initial = state.settings && Object.prototype.hasOwnProperty.call(state.settings, field.key)
-                    ? state.settings[field.key]
-                    : defaults[field.key];
-                const value = typeof initial === 'number' ? initial : defaults[field.key];
-                const row = buildAdvancedControlRow(field, value);
-                advancedContainer.appendChild(row);
-            });
-            const enabled = !!state.enabled;
-            if (advancedModeToggle) {
-                advancedModeToggle.checked = enabled;
-            }
-            setAdvancedControlsDisabled(!enabled);
-            syncAdvancedConstraints(group);
-            refreshPresetList(group);
+            buildAdvancedUi();
         }
 
-        function buildAdvancedControlRow(field, value) {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'advanced-control-row';
-            const label = document.createElement('label');
-            label.className = 'advanced-control-label';
-            label.htmlFor = `advanced-${field.key}`;
-            label.textContent = field.label;
-
-            const valueDisplay = document.createElement('span');
-            valueDisplay.className = 'advanced-value-display';
-            valueDisplay.textContent = formatAdvancedValue(value, field);
-            label.appendChild(valueDisplay);
-
-            const input = document.createElement('input');
-            input.type = field.type === 'number' ? 'number' : 'range';
-            input.id = `advanced-${field.key}`;
-            input.dataset.key = field.key;
-            input.min = field.min;
-            input.max = field.max;
-            if (field.step !== undefined) {
-                input.step = field.step;
+        function setAdvancedVisibility(enabled) {
+            const normalized = !!enabled;
+            if (normalized === advancedSidebarVisible) {
+                updateAdvancedToggleState();
+                return;
             }
-            input.value = value;
-            input.addEventListener('input', () => {
-                const numeric = parseFloat(input.value);
-                valueDisplay.textContent = formatAdvancedValue(numeric, field);
-                window.updateAdvancedGroupSetting(currentAdvancedGroup, field.key, numeric);
-                advancedValueDisplays[field.key] = { element: valueDisplay, field };
-                syncAdvancedConstraints(currentAdvancedGroup);
-            });
-            advancedValueDisplays[field.key] = { element: valueDisplay, field };
-
-            wrapper.appendChild(label);
-            wrapper.appendChild(input);
-            if (field.description) {
-                const hint = document.createElement('small');
-                hint.className = 'advanced-hint';
-                hint.textContent = field.description;
-                wrapper.appendChild(hint);
+            advancedSidebarVisible = normalized;
+            body.classList.toggle('advanced-expanded', normalized);
+            body.classList.toggle('advanced-collapsed', !normalized);
+            updateAdvancedToggleState();
+            if (normalized) {
+                ensureAdvancedUi();
+                ensureModeDefaults(currentModeKey);
+                showAdvancedSidebar();
+                window.setAdvancedPanelMode(currentModeKey);
+            } else if (advancedSidebar) {
+                advancedSidebar.classList.add('hidden');
+                advancedSidebar.setAttribute('aria-hidden', 'true');
             }
-            return wrapper;
         }
 
-        function formatAdvancedValue(value, field) {
-            if (typeof field.format === 'function') {
+        function handleAdvancedToggle(event) {
+            const checkbox = event.currentTarget;
+            const groupKey = checkbox && checkbox.dataset ? checkbox.dataset.groupKey : null;
+            if (!groupKey) {
+                return;
+            }
+        const enabled = checkbox.checked;
+        setGroupEnabled(groupKey, enabled);
+        setGroupInputsDisabled(groupKey, !enabled);
+        syncGroupFromState(groupKey);
+        if (enabled) {
+            setGroupCollapsed(groupKey, false);
+            scheduleAdvancedApply(groupKey, 'toggle');
+        } else {
+            setGroupCollapsed(groupKey, true);
+        }
+    }
+
+        function handleAdvancedFieldInput(event) {
+            const input = event.currentTarget;
+            const groupKey = input && input.dataset ? input.dataset.groupKey : null;
+            const fieldKey = input && input.dataset ? input.dataset.fieldKey : null;
+            if (!groupKey || !fieldKey) {
+                return;
+            }
+            const value = parseFloat(input.value);
+            if (typeof window.updateAdvancedGroupSetting === 'function') {
+                window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
+            }
+            updateValueLabel(groupKey, fieldKey, value);
+            enforceGroupConstraints(groupKey);
+            scheduleAdvancedApply(groupKey, 'slider');
+        }
+
+        function handleAdvancedReset(event) {
+            const button = event.currentTarget;
+            const groupKey = button && button.dataset ? button.dataset.groupKey : null;
+            if (!groupKey || typeof window.resetAdvancedGroupSettings !== 'function') {
+                return;
+            }
+            window.resetAdvancedGroupSettings(groupKey);
+            syncGroupFromState(groupKey);
+            scheduleAdvancedApply(groupKey, 'reset');
+        }
+
+        function scheduleAdvancedApply(groupKey, reason) {
+            if (!isGroupEnabled(groupKey) || typeof window.applyAdvancedGroup !== 'function') {
+                return;
+            }
+            if (pendingApplyTimers[groupKey]) {
+                clearTimeout(pendingApplyTimers[groupKey]);
+            }
+            pendingApplyTimers[groupKey] = setTimeout(() => {
+                pendingApplyTimers[groupKey] = null;
+                window.applyAdvancedGroup(groupKey, { source: reason || 'ui' });
+            }, 90);
+        }
+
+        function setGroupEnabled(groupKey, enabled) {
+            if (!groupKey) {
+                return;
+            }
+            if (groupKey === 'canonOverlay' && typeof window.setCanonAdvancedEnabled === 'function') {
+                window.setCanonAdvancedEnabled(enabled);
+            } else if (groupKey === 'eternalOverlay' && typeof window.setEternalAdvancedEnabled === 'function') {
+                window.setEternalAdvancedEnabled(enabled);
+            } else if (typeof window.setAdvancedGroupEnabled === 'function') {
+                window.setAdvancedGroupEnabled(groupKey, enabled);
+            }
+        }
+
+        function isGroupEnabled(groupKey) {
+            if (groupKey === 'canonOverlay' && typeof window.isCanonAdvancedEnabled === 'function') {
+                return !!window.isCanonAdvancedEnabled();
+            }
+            if (groupKey === 'eternalOverlay' && typeof window.isEternalAdvancedEnabled === 'function') {
+                return !!window.isEternalAdvancedEnabled();
+            }
+            const state = getGroupState(groupKey);
+            return state ? !!state.enabled : false;
+        }
+
+        function getGroupState(groupKey) {
+            if (typeof window.getAdvancedSettings !== 'function') {
+                return null;
+            }
+            try {
+                return window.getAdvancedSettings(groupKey);
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function updateGroupToggleState(groupKey, enabled) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom || !dom.toggle) {
+                return;
+            }
+            dom.toggle.checked = !!enabled;
+            setGroupInputsDisabled(groupKey, !enabled);
+        }
+
+        function setGroupInputsDisabled(groupKey, disabled) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
+                return;
+            }
+            const disabledFlag = !!disabled;
+            Object.values(dom.inputs).forEach((input) => {
+                input.disabled = disabledFlag;
+            });
+            if (dom.resetButton) {
+                dom.resetButton.disabled = disabledFlag;
+            }
+        if (dom.groupNode) {
+            dom.groupNode.classList.toggle('is-disabled', disabledFlag);
+        }
+    }
+
+    function setGroupCollapsed(groupKey, collapsed) {
+        const dom = advancedDomMap[groupKey];
+        if (!dom) {
+            return;
+        }
+        const collapseFlag = !!collapsed;
+        dom.groupNode.classList.toggle('is-collapsed', collapseFlag);
+        if (dom.body) {
+            dom.body.hidden = collapseFlag;
+        }
+        if (dom.collapseButton) {
+            dom.collapseButton.setAttribute('aria-expanded', collapseFlag ? 'false' : 'true');
+        }
+    }
+
+    function primeGroupLayoutForMode(modeKey) {
+        if (!advancedUiReady) {
+            return;
+        }
+        const normalized = (modeKey || '').toLowerCase();
+        let expandedGroups = [];
+        if (normalized === 'canon') {
+            expandedGroups = ['canonOverlay'];
+        } else if (normalized === 'jukebox') {
+            expandedGroups = ['jukeboxLoop'];
+        } else if (normalized === 'eternal') {
+            expandedGroups = ['eternalOverlay', 'eternalLoop'];
+        }
+        Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+            const shouldExpand = expandedGroups.includes(groupKey);
+            setGroupCollapsed(groupKey, !shouldExpand);
+        });
+    }
+
+        function ensureModeDefaults(modeKey) {
+            if (!advancedUiReady) {
+                return;
+            }
+            const normalized = (modeKey || '').toLowerCase();
+            const primaryGroups = MODE_PRIMARY_GROUPS[normalized] || [];
+            primaryGroups.forEach((groupKey, index) => {
+                if (!isGroupEnabled(groupKey)) {
+                    setGroupEnabled(groupKey, true);
+                }
+                if (index === 0) {
+                    setGroupCollapsed(groupKey, false);
+                }
+            });
+        }
+
+        function syncGroupFromState(groupKey) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
+                return;
+            }
+            const state = getGroupState(groupKey);
+            const defaults = state && state.defaults ? state.defaults : {};
+            const settings = state && state.settings ? state.settings : defaults;
+            const enabled = state ? !!state.enabled : false;
+            updateGroupToggleState(groupKey, enabled);
+            Object.entries(dom.inputs).forEach(([fieldKey, input]) => {
+                const nextValue = settings && settings[fieldKey] !== undefined ? settings[fieldKey] : defaults[fieldKey];
+                if (nextValue !== undefined) {
+                    input.value = nextValue;
+                }
+                updateValueLabel(groupKey, fieldKey, parseFloat(input.value));
+            });
+            enforceGroupConstraints(groupKey);
+        }
+
+        function updateValueLabel(groupKey, fieldKey, value) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom || !dom.valueLabels[fieldKey]) {
+                return;
+            }
+            const field = dom.fieldMeta[fieldKey];
+            dom.valueLabels[fieldKey].textContent = formatFieldValue(value, field);
+        }
+
+        function formatFieldValue(value, field) {
+            if (field && typeof field.format === 'function') {
                 return field.format(value);
             }
             if (typeof value === 'number' && value % 1 !== 0) {
@@ -961,45 +833,14 @@
             return `${value}`;
         }
 
-        function setAdvancedControlsDisabled(disabled) {
-            const disabledFlag = !!disabled;
-            if (advancedContainer) {
-                advancedContainer.querySelectorAll('input').forEach((node) => {
-                    node.disabled = disabledFlag;
-                });
-            }
-            if (advancedApplyButton) {
-                advancedApplyButton.disabled = disabledFlag;
-            }
-            if (advancedResetButton) {
-                advancedResetButton.disabled = disabledFlag;
-            }
-            if (presetSaveButton) {
-                presetSaveButton.disabled = disabledFlag;
-            }
-            if (presetDownloadButton) {
-                presetDownloadButton.disabled = disabledFlag;
-            }
-            if (presetUploadInput) {
-                presetUploadInput.disabled = disabledFlag;
-            }
-        }
-
-        function updateAdvancedValueDisplay(key, value) {
-            const record = advancedValueDisplays[key];
-            if (!record || !record.element) {
+        function enforceGroupConstraints(groupKey) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
                 return;
             }
-            record.element.textContent = formatAdvancedValue(value, record.field);
-        }
-
-        function syncAdvancedConstraints(group) {
-            if (!advancedContainer) {
-                return;
-            }
-            if (group === 'canonOverlay' || group === 'eternalOverlay') {
-                const minInput = advancedContainer.querySelector('input[data-key="minOffsetBeats"]');
-                const maxInput = advancedContainer.querySelector('input[data-key="maxOffsetBeats"]');
+            if (groupKey === 'canonOverlay' || groupKey === 'eternalOverlay') {
+                const minInput = dom.inputs.minOffsetBeats;
+                const maxInput = dom.inputs.maxOffsetBeats;
                 if (minInput && maxInput) {
                     const minValue = parseInt(minInput.value, 10) || 1;
                     const minForMax = Math.max(minValue + 1, parseInt(maxInput.min, 10) || minValue + 1);
@@ -1008,13 +849,15 @@
                     if (maxValue <= minValue) {
                         maxValue = minForMax;
                         maxInput.value = String(maxValue);
-                        window.updateAdvancedGroupSetting(group, 'maxOffsetBeats', maxValue);
-                        updateAdvancedValueDisplay('maxOffsetBeats', maxValue);
+                        if (typeof window.updateAdvancedGroupSetting === 'function') {
+                            window.updateAdvancedGroupSetting(groupKey, 'maxOffsetBeats', maxValue);
+                        }
                     }
+                    updateValueLabel(groupKey, 'maxOffsetBeats', parseFloat(maxInput.value));
                 }
-            } else if (group === 'jukeboxLoop' || group === 'eternalLoop') {
-                const minLoopInput = advancedContainer.querySelector('input[data-key="minLoopBeats"]');
-                const maxSeqInput = advancedContainer.querySelector('input[data-key="maxSequentialBeats"]');
+            } else if (groupKey === 'jukeboxLoop' || groupKey === 'eternalLoop') {
+                const minLoopInput = dom.inputs.minLoopBeats;
+                const maxSeqInput = dom.inputs.maxSequentialBeats;
                 if (minLoopInput && maxSeqInput) {
                     const minLoop = parseInt(minLoopInput.value, 10) || 4;
                     const minSeq = Math.max(minLoop + 2, parseInt(maxSeqInput.min, 10) || (minLoop + 2));
@@ -1023,55 +866,47 @@
                     if (maxSeq <= minLoop) {
                         maxSeq = minSeq;
                         maxSeqInput.value = String(maxSeq);
-                        window.updateAdvancedGroupSetting(group, 'maxSequentialBeats', maxSeq);
-                        updateAdvancedValueDisplay('maxSequentialBeats', maxSeq);
+                        if (typeof window.updateAdvancedGroupSetting === 'function') {
+                            window.updateAdvancedGroupSetting(groupKey, 'maxSequentialBeats', maxSeq);
+                        }
                     }
+                    updateValueLabel(groupKey, 'maxSequentialBeats', parseFloat(maxSeqInput.value));
                 }
             }
         }
 
-        function refreshPresetList(group) {
-            if (!presetList) {
+        function syncAdvancedSectionsForMode(modeKey) {
+            pendingAdvancedMode = modeKey;
+            if (!advancedUiReady) {
                 return;
             }
-            presetList.innerHTML = '';
-            const presets = typeof window.getAdvancedPresets === 'function' ? window.getAdvancedPresets(group) : [];
-            if (!presets || !presets.length) {
-                const empty = document.createElement('div');
-                empty.className = 'preset-empty-state';
-                empty.textContent = 'No presets saved yet.';
-                presetList.appendChild(empty);
+            const allowed = MODE_TO_SECTION_IDS[modeKey] || [];
+            const selection = allowed.length ? allowed : ADVANCED_SECTION_LAYOUT.map((section) => section.id);
+            const allowedSet = new Set(selection);
+            ADVANCED_SECTION_LAYOUT.forEach((section) => {
+                const node = advancedSectionNodes[section.id];
+                if (node) {
+                    node.classList.toggle('hidden', !allowedSet.has(section.id));
+                }
+            });
+            primeGroupLayoutForMode(modeKey);
+        }
+
+        window.onCanonModeChanged = (enabled) => {
+            if (!advancedSidebarVisible) {
                 return;
             }
-            presets.forEach((preset) => {
-                const row = document.createElement('div');
-                row.className = 'preset-item-row';
-                const name = document.createElement('span');
-                name.className = 'preset-item-name';
-                name.textContent = preset.name;
-                const actions = document.createElement('div');
-                actions.className = 'preset-item-actions';
-                const applyBtn = document.createElement('button');
-                applyBtn.type = 'button';
-                applyBtn.className = 'viz-button ghost';
-                applyBtn.textContent = 'Apply';
-                applyBtn.addEventListener('click', () => {
-                    window.loadAdvancedPreset(group, preset.id);
-                    renderAdvancedControls(group);
-                });
-                const deleteBtn = document.createElement('button');
-                deleteBtn.type = 'button';
-                deleteBtn.className = 'viz-button ghost';
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.addEventListener('click', () => {
-                    window.deleteAdvancedPreset(group, preset.id);
-                    refreshPresetList(group);
-                });
-                actions.appendChild(applyBtn);
-                actions.appendChild(deleteBtn);
-                row.appendChild(name);
-                row.appendChild(actions);
-                presetList.appendChild(row);
+            updateGroupToggleState('canonOverlay', enabled);
+            syncGroupFromState('canonOverlay');
+            if (enabled) {
+                setGroupCollapsed('canonOverlay', false);
+            }
+        };
+
+        setAdvancedVisibility(false);
+        if (advancedToggleButton) {
+            advancedToggleButton.addEventListener('click', () => {
+                setAdvancedVisibility(!advancedSidebarVisible);
             });
         }
 

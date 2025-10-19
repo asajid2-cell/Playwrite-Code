@@ -696,6 +696,22 @@
             }
             updateValueLabel(groupKey, fieldKey, value);
             enforceGroupConstraints(groupKey);
+            if (groupKey === 'canonOverlay') {
+                if (typeof window.setCanonAdvancedEnabled === 'function') {
+                    const isEnabled = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+                    if (!isEnabled) {
+                        window.setCanonAdvancedEnabled(true);
+                    }
+                }
+                if (typeof window.updateCanonSetting === 'function') {
+                    window.updateCanonSetting(fieldKey, value);
+                }
+                if (typeof window.applyImmediateAdvancedSetting === 'function') {
+                    window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+                }
+                syncGroupFromState(groupKey);
+                return;
+            }
             forceAdvancedApply(groupKey, fieldKey, value, 'input');
         }
 
@@ -715,6 +731,22 @@
             }
             updateValueLabel(groupKey, fieldKey, value);
             enforceGroupConstraints(groupKey);
+            if (groupKey === 'canonOverlay') {
+                if (typeof window.setCanonAdvancedEnabled === 'function') {
+                    const isEnabled = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+                    if (!isEnabled) {
+                        window.setCanonAdvancedEnabled(true);
+                    }
+                }
+                if (typeof window.updateCanonSetting === 'function') {
+                    window.updateCanonSetting(fieldKey, value);
+                }
+                if (typeof window.applyImmediateAdvancedSetting === 'function') {
+                    window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+                }
+                syncGroupFromState(groupKey);
+                return;
+            }
             forceAdvancedApply(groupKey, fieldKey, value, event && event.type ? event.type : 'commit');
         }
 

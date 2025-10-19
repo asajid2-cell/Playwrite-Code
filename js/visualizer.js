@@ -135,6 +135,87 @@ function resetAdvancedGroupSettings(group) {
     return cloneAdvancedState(group);
 }
 
+function clamp01(value) {
+    var num = (typeof value === "number") ? value : parseFloat(value);
+    if (!isFinite(num)) {
+        return 0;
+    }
+    if (num < 0) {
+        return 0;
+    }
+    if (num > 1) {
+        return 1;
+    }
+    return num;
+}
+
+function coerceNumber(value) {
+    var num = (typeof value === "number") ? value : parseFloat(value);
+    return isFinite(num) ? num : null;
+}
+
+function sanitizeLoopSettings(raw, defaults) {
+    var merged = cloneSettings(defaults || {});
+    var source = raw || {};
+    if (source.minLoopBeats !== undefined) {
+        merged.minLoopBeats = source.minLoopBeats;
+    }
+    if (source.maxSequentialBeats !== undefined) {
+        merged.maxSequentialBeats = source.maxSequentialBeats;
+    }
+    if (source.loopThreshold !== undefined) {
+        merged.loopThreshold = source.loopThreshold;
+    }
+    if (source.sectionBias !== undefined) {
+        merged.sectionBias = source.sectionBias;
+    }
+    if (source.jumpVariance !== undefined) {
+        merged.jumpVariance = source.jumpVariance;
+    }
+
+    var minLoopBeats = coerceNumber(merged.minLoopBeats);
+    if (minLoopBeats === null) {
+        minLoopBeats = defaults && defaults.minLoopBeats !== undefined ? defaults.minLoopBeats : 8;
+    }
+    merged.minLoopBeats = Math.max(4, Math.round(minLoopBeats));
+
+    var maxSequentialBeats = coerceNumber(merged.maxSequentialBeats);
+    if (maxSequentialBeats === null) {
+        maxSequentialBeats = Math.max(merged.minLoopBeats + 4, merged.minLoopBeats * 3);
+    }
+    merged.maxSequentialBeats = Math.max(merged.minLoopBeats + 2, Math.round(maxSequentialBeats));
+
+    var loopThreshold = coerceNumber(merged.loopThreshold);
+    if (loopThreshold === null) {
+        loopThreshold = defaults && defaults.loopThreshold !== undefined ? defaults.loopThreshold : 0.55;
+    }
+    merged.loopThreshold = Math.max(0.05, Math.min(0.99, loopThreshold));
+
+    var sectionBias = coerceNumber(merged.sectionBias);
+    if (sectionBias === null) {
+        sectionBias = defaults && defaults.sectionBias !== undefined ? defaults.sectionBias : 0.5;
+    }
+    merged.sectionBias = clamp01(sectionBias);
+
+    var jumpVariance = coerceNumber(merged.jumpVariance);
+    if (jumpVariance === null) {
+        jumpVariance = defaults && defaults.jumpVariance !== undefined ? defaults.jumpVariance : 0.4;
+    }
+    merged.jumpVariance = clamp01(jumpVariance);
+
+    return merged;
+}
+
+function getLoopSettingsForMode(modeName) {
+    var groupKey = (modeName === "eternal") ? "eternalLoop" : "jukeboxLoop";
+    var defaults = cloneAdvancedDefaults(groupKey);
+    var state = cloneAdvancedState(groupKey);
+    var useAdvanced = isAdvancedGroupEnabled(groupKey);
+    var sanitized = sanitizeLoopSettings(useAdvanced ? state : defaults, defaults);
+    sanitized.modeName = modeName;
+    return sanitized;
+}
+
 function generatePresetId() {
     return "preset-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
 }
@@ -860,25 +941,38 @@ if (typeof window !== "undefined") {
         }
     };
     window.applyImmediateAdvancedSetting = function(group, key, value) {
-        if (!group) {
+        var numericValue = parseFloat(value);
+        if (!group || key === undefined || isNaN(numericValue)) {
             return;
         }
-        if (typeof window.setAdvancedGroupEnabled === "function") {
-            window.setAdvancedGroupEnabled(group, true);
+
+        if (typeof window.isAdvancedGroupEnabled === "function" && typeof window.setAdvancedGroupEnabled === "function") {
+            if (!window.isAdvancedGroupEnabled(group)) {
+                window.setAdvancedGroupEnabled(group, true);
+            }
+        } else {
+            setAdvancedGroupEnabledFlag(group, true);
         }
-        updateAdvancedGroupSetting(group, key, value);
+
+        updateAdvancedGroupSetting(group, key, numericValue);
+
         if (group === "canonOverlay") {
-            updateCanonSetting(key, value);
+            if (!canonAdvancedEnabled) {
+                setCanonAdvancedEnabled(true);
+            }
+            updateCanonSetting(key, numericValue);
         } else if (group === "eternalOverlay") {
-            ensureAdvancedGroupSettings("eternalOverlay")[key] = value;
-            regenerateEternalOverlay({ reason: "ui" });
+            if (!eternalAdvancedEnabled) {
+                setEternalAdvancedEnabled(true);
+            }
+            regenerateEternalOverlay({ reason: "slider" });
         } else if (group === "jukeboxLoop") {
-            ensureAdvancedGroupSettings("jukeboxLoop")[key] = value;
+            ensureAdvancedGroupSettings("jukeboxLoop")[key] = numericValue;
             if (mode === "jukebox") {
                 rebuildDriverForCurrentMode(true);
             }
         } else if (group === "eternalLoop") {
-            ensureAdvancedGroupSettings("eternalLoop")[key] = value;
+            ensureAdvancedGroupSettings("eternalLoop")[key] = numericValue;
             if (mode === "eternal") {
                 rebuildDriverForCurrentMode(true);
             }
@@ -2348,9 +2442,33 @@ function createJukeboxDriver(player, options) {
     var running = false;
     var mtime = $("#mtime");
     var modeName = options.modeName || "jukebox";
-    var minLoopBeats = Math.max(4, options.minLoopBeats || 12);
-    var maxSequentialBeats = Math.max(minLoopBeats + 4, options.maxSequentialBeats || minLoopBeats * 3);
-    var loopThreshold = (typeof options.loopThreshold === "number") ? options.loopThreshold : 0.55;
+
+    var minLoopBeats = coerceNumber(options.minLoopBeats);
+    if (minLoopBeats === null) {
+        minLoopBeats = 12;
+    }
+    minLoopBeats = Math.max(4, Math.round(minLoopBeats));
+
+    var maxSequentialBeats = coerceNumber(options.maxSequentialBeats);
+    if (maxSequentialBeats === null) {
+        maxSequentialBeats = minLoopBeats * 3;
+    }
+    maxSequentialBeats = Math.max(minLoopBeats + 2, Math.round(maxSequentialBeats));
+
+    var loopThreshold = coerceNumber(options.loopThreshold);
+    if (loopThreshold === null) {
+        loopThreshold = 0.55;
+    }
+    loopThreshold = Math.max(0.05, Math.min(0.99, loopThreshold));
+
+    var sectionBias = clamp01(options.sectionBias !== undefined ? options.sectionBias : 0.6);
+    var jumpVariance = clamp01(options.jumpVariance !== undefined ? options.jumpVariance : 0.4);
+    var sameSectionBonusBase = 0.08 + sectionBias * 0.42;
+    var crossSectionBonusBase = 0.08 + (1 - sectionBias) * 0.28;
+    var recentPenaltyScale = (1 - sectionBias) * 0.18;
+    var weightJitterStrength = jumpVariance * 0.3;
+    var spanScaleBase = 1.0 + (1 - jumpVariance) * 0.8;
+
     var loopChoices = [];
     var loopGraph = {};
     var loopHistory = [];
@@ -2596,9 +2714,20 @@ function createJukeboxDriver(player, options) {
 
     function scheduleNextJump(force) {
         var minB = minLoopBeats;
-        var maxB = maxSequentialBeats;
-        var upper = force ? Math.max(minB + 2, Math.floor((minB + maxB) / 2)) : maxB;
-        beatsUntilJump = randomBetween(minB, upper);
+        var maxB = Math.max(minB + 1, maxSequentialBeats);
+        var span = Math.max(2, maxB - minB);
+        var bias = jumpVariance;
+        var upperFrac = force ? (0.3 + bias * 0.3) : (0.55 + bias * 0.4);
+        var lowerFrac = force ? Math.max(0, bias * 0.1) : Math.max(0, bias * 0.3);
+        var upper = Math.max(minB + 1, Math.min(maxB, minB + Math.round(span * upperFrac)));
+        var lower = Math.max(minB, Math.min(upper - 1, minB + Math.round(span * lowerFrac)));
+        if (lower >= upper) {
+            lower = Math.max(minB, upper - 1);
+        }
+        if (lower >= upper) {
+            lower = minB;
+        }
+        beatsUntilJump = randomBetween(lower, upper);
     }
 
     function recordSectionVisit(sectionIdx) {
@@ -2655,9 +2784,9 @@ function createJukeboxDriver(player, options) {
         var total = 0;
         _.each(filtered, function(edge) {
             var simNorm = Math.max(0, Math.min(1, (edge.similarity + 1) / 2));
-            var spanNorm = Math.min(1, Math.max(0.25, edge.span / (minLoopBeats * 1.5)));
-            var sectionBonus = edge.sameSection ? 0.18 : 0.08;
-            var weight = 0.28 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
+            var spanNorm = Math.min(1, Math.max(0.2, edge.span / (minLoopBeats * spanScaleBase)));
+            var sectionBonus = edge.sameSection ? sameSectionBonusBase : crossSectionBonusBase;
+            var weight = 0.22 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
             var targetSection = null;
             if (masterQs[edge.target] && typeof masterQs[edge.target].section === "number") {
                 targetSection = masterQs[edge.target].section;
@@ -2666,10 +2795,15 @@ function createJukeboxDriver(player, options) {
                 var depth = 0;
                 for (var r = recentSections.length - 1; r >= 0 && depth < 4; r--, depth++) {
                     if (recentSections[r] === targetSection) {
-                        weight -= 0.12 * (4 - depth);
+                        var penalty = recentPenaltyScale * (4 - depth) * 0.35;
+                        weight -= penalty;
                         break;
                     }
                 }
+            }
+            if (weightJitterStrength > 0) {
+                var jitter = (Math.random() * 2 - 1) * weightJitterStrength;
+                weight *= (1 + jitter);
             }
             if (weight < 0.05) {
                 weight = 0.05;
@@ -2792,17 +2926,9 @@ function createJukeboxDriver(player, options) {
 
 function Driver(player) {
     if (mode === "jukebox") {
-        return createJukeboxDriver(player, {
-            modeName: "jukebox",
-            minLoopBeats: 12,
-            loopThreshold: 0.55
-        });
+        return createJukeboxDriver(player, getLoopSettingsForMode("jukebox"));
     } else if (mode === "eternal") {
-        return createJukeboxDriver(player, {
-            modeName: "eternal",
-            minLoopBeats: 8,
-            loopThreshold: 0.5
-        });
+        return createJukeboxDriver(player, getLoopSettingsForMode("eternal"));
     }
     return createCanonDriver(player);
 }

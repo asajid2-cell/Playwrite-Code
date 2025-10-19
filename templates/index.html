@@ -768,7 +768,7 @@
             if (!dom) {
                 return;
             }
-            const disabledFlag = !!disabled && !advancedSidebarVisible;
+            const disabledFlag = !!disabled;
             Object.values(dom.inputs).forEach((input) => {
                 input.disabled = disabledFlag;
             });

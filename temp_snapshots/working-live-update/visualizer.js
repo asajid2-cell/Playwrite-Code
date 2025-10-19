@@ -1,21 +1,4 @@
 "use strict";
-
-function debounce(fn, wait) {
-    var delay = (typeof wait === "number" && wait >= 0) ? wait : 60;
-    var timerId = null;
-    return function debounced() {
-        var context = this;
-        var args = arguments;
-        if (timerId !== null) {
-            clearTimeout(timerId);
-        }
-        timerId = setTimeout(function invoke() {
-            timerId = null;
-            fn.apply(context, args);
-        }, delay);
-    };
-}
-
 var remixer = null;
 var driver = null;
 var mode = "canon";
@@ -43,365 +26,13 @@ var isTrackReady = false;
 var serverLoopCandidateMap = {};
 var canonLoopCandidates = [];
 var loopPaths = [];
-var ADVANCED_DEFAULTS = {
-    canonOverlay: {
-        minOffsetBeats: 8,
-        maxOffsetBeats: 64,
-        dwellBeats: 6,
-        density: 2,
-        variation: 2
-    },
-    eternalOverlay: {
-        minOffsetBeats: 8,
-        maxOffsetBeats: 64,
-        dwellBeats: 6,
-        density: 2,
-        variation: 2
-    },
-    jukeboxLoop: {
-        minLoopBeats: 12,
-        maxSequentialBeats: 36,
-        loopThreshold: 0.55,
-        sectionBias: 0.6,
-        jumpVariance: 0.4
-    },
-    eternalLoop: {
-        minLoopBeats: 8,
-        maxSequentialBeats: 28,
-        loopThreshold: 0.5,
-        sectionBias: 0.55,
-        jumpVariance: 0.5
-    }
+var canonSettings = {
+    minOffsetBeats: 8,
+    maxOffsetBeats: 64,
+    dwellBeats: 6,
+    density: 2,
+    variation: 2
 };
-
-function cloneSettings(obj) {
-    return JSON.parse(JSON.stringify(obj));
-}
-
-var advancedSettings = {
-    canonOverlay: cloneSettings(ADVANCED_DEFAULTS.canonOverlay),
-    eternalOverlay: cloneSettings(ADVANCED_DEFAULTS.eternalOverlay),
-    jukeboxLoop: cloneSettings(ADVANCED_DEFAULTS.jukeboxLoop),
-    eternalLoop: cloneSettings(ADVANCED_DEFAULTS.eternalLoop)
-};
-
-var canonAdvancedEnabled = false;
-var canonSettings = advancedSettings.canonOverlay;
-
-var advancedEnabled = {
-    canonOverlay: false,
-    eternalOverlay: false,
-    jukeboxLoop: false,
-    eternalLoop: false
-};
-
-function createLiveAdvancedEntry(group) {
-    return {
-        enabled: !!advancedEnabled[group],
-        settings: advancedSettings[group],
-        defaults: cloneAdvancedDefaults(group)
-    };
-}
-
-var LIVE_ADVANCED_STATE = {
-    canonOverlay: createLiveAdvancedEntry("canonOverlay"),
-    eternalOverlay: createLiveAdvancedEntry("eternalOverlay"),
-    jukeboxLoop: createLiveAdvancedEntry("jukeboxLoop"),
-    eternalLoop: createLiveAdvancedEntry("eternalLoop")
-};
-
-var eternalAdvancedEnabled = false;
-
-var advancedPresets = {
-    canonOverlay: [],
-    eternalOverlay: [],
-    jukeboxLoop: [],
-    eternalLoop: []
-};
-
-var queuedAdvancedApplyTimers = Object.create(null);
-
-function getLiveGroupState(group) {
-    return LIVE_ADVANCED_STATE[group] || null;
-}
-
-function recomputeLoopGraphForMode(modeName) {
-    if (!modeName) {
-        return;
-    }
-    var normalized = modeName === "eternal" ? "eternal" : "jukebox";
-    if (mode !== normalized) {
-        return;
-    }
-    var loopSettings = getLoopSettingsForMode(normalized);
-    if (driver && typeof driver.recomputeLoopGraph === "function") {
-        driver.recomputeLoopGraph(loopSettings);
-    } else {
-        rebuildDriverForCurrentMode(true);
-    }
-}
-
-var scheduleCanonGraphRebuild = debounce(function(reason) {
-    if (mode !== "canon" || !canonAdvancedEnabled || !masterQs || !masterQs.length) {
-        return;
-    }
-    regenerateCanonMapping({ reason: reason || "live-update" });
-}, 120);
-
-var scheduleEternalOverlayRecalc = debounce(function(reason) {
-    if (mode !== "eternal" || !isAdvancedGroupEnabled("eternalOverlay")) {
-        return;
-    }
-    regenerateEternalOverlay({ reason: reason || "live-update" });
-}, 150);
-
-var scheduleJukeboxLoopRecalc = debounce(function() {
-    recomputeLoopGraphForMode("jukebox");
-}, 150);
-
-var scheduleEternalLoopRecalc = debounce(function() {
-    recomputeLoopGraphForMode("eternal");
-}, 150);
-
-function applyLoopFieldToDriver(fieldKey, value) {
-    if (!driver) {
-        return false;
-    }
-    if (fieldKey === "minLoopBeats" && typeof driver.setMinLoopBeats === "function") {
-        driver.setMinLoopBeats(value);
-        return true;
-    }
-    if (fieldKey === "maxSequentialBeats" && typeof driver.setMaxSequentialBeats === "function") {
-        driver.setMaxSequentialBeats(value);
-        return true;
-    }
-    if (fieldKey === "loopThreshold" && typeof driver.setLoopSimilarityThreshold === "function") {
-        driver.setLoopSimilarityThreshold(value);
-        return true;
-    }
-    if (fieldKey === "sectionBias" && typeof driver.setLoopSectionBias === "function") {
-        driver.setLoopSectionBias(value);
-        return true;
-    }
-    if (fieldKey === "jumpVariance" && typeof driver.setLoopJumpVariance === "function") {
-        driver.setLoopJumpVariance(value);
-        return true;
-    }
-    return false;
-}
-
-function cloneAdvancedState(group) {
-    if (!advancedSettings[group]) {
-        return {};
-    }
-    return cloneSettings(advancedSettings[group]);
-}
-
-function cloneAdvancedDefaults(group) {
-    if (!ADVANCED_DEFAULTS[group]) {
-        return {};
-    }
-    return cloneSettings(ADVANCED_DEFAULTS[group]);
-}
-
-function isAdvancedGroupEnabled(group) {
-    return !!advancedEnabled[group];
-}
-
-function setAdvancedGroupEnabledFlag(group, enabled) {
-    var normalized = !!enabled;
-    advancedEnabled[group] = normalized;
-    if (LIVE_ADVANCED_STATE[group]) {
-        LIVE_ADVANCED_STATE[group].enabled = normalized;
-    }
-    if (group === "canonOverlay") {
-        canonAdvancedEnabled = normalized;
-    } else if (group === "eternalOverlay") {
-        eternalAdvancedEnabled = normalized;
-    }
-}
-
-function ensureAdvancedGroupSettings(group) {
-    if (!advancedSettings[group]) {
-        advancedSettings[group] = cloneAdvancedDefaults(group);
-        if (LIVE_ADVANCED_STATE[group]) {
-            LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        } else {
-            LIVE_ADVANCED_STATE[group] = createLiveAdvancedEntry(group);
-        }
-    }
-    return advancedSettings[group];
-}
-
-function updateAdvancedGroupSetting(group, key, value) {
-    var target = ensureAdvancedGroupSettings(group);
-    if (target && key !== undefined) {
-        target[key] = value;
-    }
-}
-
-function resetAdvancedGroupSettings(group) {
-    var defaults = cloneAdvancedDefaults(group);
-    advancedSettings[group] = cloneSettings(defaults);
-    if (LIVE_ADVANCED_STATE[group]) {
-        LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        LIVE_ADVANCED_STATE[group].defaults = defaults;
-    } else {
-        LIVE_ADVANCED_STATE[group] = {
-            enabled: !!advancedEnabled[group],
-            settings: advancedSettings[group],
-            defaults: defaults
-        };
-    }
-    return cloneAdvancedState(group);
-}
-
-function clamp01(value) {
-    var num = (typeof value === "number") ? value : parseFloat(value);
-    if (!isFinite(num)) {
-        return 0;
-    }
-    if (num < 0) {
-        return 0;
-    }
-    if (num > 1) {
-        return 1;
-    }
-    return num;
-}
-
-function coerceNumber(value) {
-    var num = (typeof value === "number") ? value : parseFloat(value);
-    return isFinite(num) ? num : null;
-}
-
-function sanitizeLoopSettings(raw, defaults) {
-    var merged = cloneSettings(defaults || {});
-    var source = raw || {};
-    if (source.minLoopBeats !== undefined) {
-        merged.minLoopBeats = source.minLoopBeats;
-    }
-    if (source.maxSequentialBeats !== undefined) {
-        merged.maxSequentialBeats = source.maxSequentialBeats;
-    }
-    if (source.loopThreshold !== undefined) {
-        merged.loopThreshold = source.loopThreshold;
-    }
-    if (source.sectionBias !== undefined) {
-        merged.sectionBias = source.sectionBias;
-    }
-    if (source.jumpVariance !== undefined) {
-        merged.jumpVariance = source.jumpVariance;
-    }
-
-    var minLoopBeats = coerceNumber(merged.minLoopBeats);
-    if (minLoopBeats === null) {
-        minLoopBeats = defaults && defaults.minLoopBeats !== undefined ? defaults.minLoopBeats : 8;
-    }
-    merged.minLoopBeats = Math.max(4, Math.round(minLoopBeats));
-
-    var maxSequentialBeats = coerceNumber(merged.maxSequentialBeats);
-    if (maxSequentialBeats === null) {
-        maxSequentialBeats = Math.max(merged.minLoopBeats + 4, merged.minLoopBeats * 3);
-    }
-    merged.maxSequentialBeats = Math.max(merged.minLoopBeats + 2, Math.round(maxSequentialBeats));
-
-    var loopThreshold = coerceNumber(merged.loopThreshold);
-    if (loopThreshold === null) {
-        loopThreshold = defaults && defaults.loopThreshold !== undefined ? defaults.loopThreshold : 0.55;
-    }
-    merged.loopThreshold = Math.max(0.05, Math.min(0.99, loopThreshold));
-
-    var sectionBias = coerceNumber(merged.sectionBias);
-    if (sectionBias === null) {
-        sectionBias = defaults && defaults.sectionBias !== undefined ? defaults.sectionBias : 0.5;
-    }
-    merged.sectionBias = clamp01(sectionBias);
-
-    var jumpVariance = coerceNumber(merged.jumpVariance);
-    if (jumpVariance === null) {
-        jumpVariance = defaults && defaults.jumpVariance !== undefined ? defaults.jumpVariance : 0.4;
-    }
-    merged.jumpVariance = clamp01(jumpVariance);
-
-    return merged;
-}
-
-function getLoopSettingsForMode(modeName) {
-    var groupKey = (modeName === "eternal") ? "eternalLoop" : "jukeboxLoop";
-    var defaults = cloneAdvancedDefaults(groupKey);
-    var state = cloneAdvancedState(groupKey);
-    var useAdvanced = isAdvancedGroupEnabled(groupKey);
-    var sanitized = sanitizeLoopSettings(useAdvanced ? state : defaults, defaults);
-    sanitized.modeName = modeName;
-    return sanitized;
-}
-
-function generatePresetId() {
-    return "preset-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
-}
-
-function getPresetsForGroup(group) {
-    if (!advancedPresets[group]) {
-        advancedPresets[group] = [];
-    }
-    return advancedPresets[group];
-}
-
-function saveAdvancedPreset(group, name, settings) {
-    var presets = getPresetsForGroup(group);
-    var preset = {
-        id: generatePresetId(),
-        name: name || "Preset " + (presets.length + 1),
-        settings: cloneSettings(settings || ensureAdvancedGroupSettings(group)),
-        createdAt: Date.now()
-    };
-    presets.push(preset);
-    return preset;
-}
-
-function findPreset(group, presetId) {
-    var presets = getPresetsForGroup(group);
-    for (var i = 0; i < presets.length; i++) {
-        if (presets[i] && presets[i].id === presetId) {
-            return presets[i];
-        }
-    }
-    return null;
-}
-
-function deleteAdvancedPreset(group, presetId) {
-    var presets = getPresetsForGroup(group);
-    for (var i = presets.length - 1; i >= 0; i--) {
-        if (presets[i] && presets[i].id === presetId) {
-            presets.splice(i, 1);
-            return true;
-        }
-    }
-    return false;
-}
-
-function clonePresetList(group) {
-    var presets = getPresetsForGroup(group);
-    return JSON.parse(JSON.stringify(presets));
-}
-
-function rebuildDriverForCurrentMode(shouldResume) {
-    if (!isTrackReady || !remixer || typeof remixer.getPlayer !== "function") {
-        return;
-    }
-    var resume = !!shouldResume && driver && typeof driver.isRunning === "function" && driver.isRunning();
-    if (driver && typeof driver.stop === "function") {
-        try {
-            driver.stop();
-        } catch (e) {}
-    }
-    driver = Driver(remixer.getPlayer());
-    if (resume && driver && typeof driver.start === "function") {
-        driver.start();
-    }
-}
-
 var canonBaseAssignments = [];
 
 // From Crockford, Douglas (2008-12-17). JavaScript: The Good Parts (Kindle Locations 734-736). Yahoo Press.
@@ -504,7 +135,7 @@ var yesSims = 0
 
 function calculateNearestNeighborsForQuantum(list, q1) {
     var neighbors = [];
-    var maxNeighbors = canonAdvancedEnabled ? 20 : 10;
+    var maxNeighbors = 20;
     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
     var MIN_INDEX_SPREAD = 3;
 
@@ -862,52 +493,12 @@ function regenerateCanonMapping(options) {
     }
     options = options || {};
     restoreBaseCanonMapping(masterQs);
-
-    if (!canonAdvancedEnabled) {
-        assignNormalizedVolumes(masterQs);
-        refreshCanonVisualization();
-        if (typeof window.onCanonRegenerated === "function") {
-            window.onCanonRegenerated({ mode: "legacy" });
-        }
-        return;
-    }
-
-    var result = regenerateOverlayFromSettings(canonSettings, { targetMode: "canon" });
-    refreshCanonVisualization();
-    if (typeof window.onCanonRegenerated === "function") {
-        window.onCanonRegenerated(result ? Object.assign({ mode: "advanced" }, result) : { mode: "advanced" });
-    }
-}
-
-function regenerateEternalOverlay(options) {
-    if (mode !== "eternal" || !masterQs || !masterQs.length) {
-        return;
-    }
-    options = options || {};
-    restoreBaseCanonMapping(masterQs);
-    if (!eternalAdvancedEnabled) {
-        assignNormalizedVolumes(masterQs);
-        return;
-    }
-    regenerateOverlayFromSettings(advancedSettings.eternalOverlay, { targetMode: "eternal" });
-}
-
-function regenerateOverlayFromSettings(settings, details) {
-    if (!settings || !masterQs || !masterQs.length) {
-        return null;
-    }
-    var minOffset = Math.max(1, Math.floor(settings.minOffsetBeats || 1));
-    var maxOffset = Math.max(minOffset + 1, Math.floor(settings.maxOffsetBeats || (masterQs.length * 0.6)));
+    var minOffset = Math.max(1, Math.floor(canonSettings.minOffsetBeats || 1));
+    var maxOffset = Math.max(minOffset + 1, Math.floor(canonSettings.maxOffsetBeats || (masterQs.length * 0.6)));
     maxOffset = Math.min(maxOffset, masterQs.length - 1);
-    if (maxOffset <= minOffset) {
-        maxOffset = Math.max(minOffset + 1, Math.min(masterQs.length - 1, minOffset + 8));
-        settings.maxOffsetBeats = maxOffset;
-    }
-    settings.minOffsetBeats = minOffset;
-    settings.maxOffsetBeats = maxOffset;
-    var dwell = Math.max(1, Math.floor(settings.dwellBeats || 4));
-    var density = Math.max(1, Math.floor(settings.density || 3));
-    var variation = Math.max(0, Math.floor(settings.variation || 0));
+    var dwell = Math.max(2, Math.floor(canonSettings.dwellBeats || 4));
+    var density = Math.max(1, Math.floor(canonSettings.density || 3));
+    var variation = Math.max(0, Math.floor(canonSettings.variation || 0));
     var spacing = Math.max(8, Math.round(36 / density) + 12);
     var runLen = Math.max(2, Math.min(8, density + 2));
     var jitter = Math.min(10, variation + 2);
@@ -930,18 +521,19 @@ function regenerateOverlayFromSettings(settings, details) {
         maxAbsOffset: maxOffset
     });
     assignNormalizedVolumes(masterQs);
-    return {
-        minOffset: minOffset,
-        maxOffset: maxOffset,
-        dwell: dwell,
-        density: density,
-        variation: variation,
-        targetMode: details && details.targetMode ? details.targetMode : "canon"
-    };
+    refreshCanonVisualization();
+    if (typeof window.onCanonRegenerated === "function") {
+        window.onCanonRegenerated({
+            minOffset: minOffset,
+            maxOffset: maxOffset,
+            dwell: dwell,
+            density: density,
+            variation: variation
+        });
+    }
 }
 
 function updateCanonSetting(key, value) {
-    canonSettings = ensureAdvancedGroupSettings("canonOverlay");
     if (!canonSettings || key === undefined) {
         return;
     }
@@ -968,7 +560,7 @@ function updateCanonSetting(key, value) {
         canonSettings[key] = value;
     }
     if (mode === "canon" && masterQs && masterQs.length) {
-        scheduleCanonGraphRebuild("setting");
+        regenerateCanonMapping();
     }
 }
 
@@ -983,204 +575,6 @@ if (typeof window !== "undefined") {
             density: canonSettings.density,
             variation: canonSettings.variation
         };
-    };
-    window.setCanonAdvancedEnabled = setCanonAdvancedEnabled;
-    window.isCanonAdvancedEnabled = function() { return canonAdvancedEnabled; };
-    window.setEternalAdvancedEnabled = setEternalAdvancedEnabled;
-    window.isEternalAdvancedEnabled = function() { return eternalAdvancedEnabled; };
-    window.getAdvancedDefaults = function(group) { return cloneAdvancedDefaults(group); };
-    window.getAdvancedSettings = function(group) {
-        var state = getLiveGroupState(group);
-        if (!state) {
-            return {
-                enabled: isAdvancedGroupEnabled(group),
-                settings: cloneAdvancedState(group),
-                defaults: cloneAdvancedDefaults(group)
-            };
-        }
-        var settingsSnapshot = state.settings ? cloneSettings(state.settings) : cloneAdvancedState(group);
-        var defaultsSnapshot = state.defaults ? cloneSettings(state.defaults) : cloneAdvancedDefaults(group);
-        return {
-            enabled: !!state.enabled,
-            settings: settingsSnapshot,
-            defaults: defaultsSnapshot
-        };
-    };
-    window.setAdvancedGroupEnabled = function(group, enabled) {
-        if (group === "canonOverlay") {
-            setCanonAdvancedEnabled(enabled);
-            return;
-        }
-        if (group === "eternalOverlay") {
-            setEternalAdvancedEnabled(enabled);
-            return;
-        }
-        if (!enabled && queuedAdvancedApplyTimers[group]) {
-            clearTimeout(queuedAdvancedApplyTimers[group]);
-            queuedAdvancedApplyTimers[group] = null;
-        }
-        setAdvancedGroupEnabledFlag(group, enabled);
-        if (group === "jukeboxLoop" && mode === "jukebox") {
-            recomputeLoopGraphForMode("jukebox");
-        } else if (group === "eternalLoop" && mode === "eternal") {
-            recomputeLoopGraphForMode("eternal");
-        }
-    };
-    window.isAdvancedGroupEnabled = function(group) { return isAdvancedGroupEnabled(group); };
-    window.updateAdvancedGroupSetting = function(group, key, value) {
-        updateAdvancedGroupSetting(group, key, value);
-        if (group === "canonOverlay") {
-            updateCanonSetting(key, value);
-            return;
-        }
-        if (group === "eternalOverlay") {
-            if (mode === "eternal" && eternalAdvancedEnabled) {
-                scheduleEternalOverlayRecalc("ui");
-            }
-            return;
-        }
-        if (!isAdvancedGroupEnabled(group)) {
-            return;
-        }
-        if (queuedAdvancedApplyTimers[group]) {
-            clearTimeout(queuedAdvancedApplyTimers[group]);
-        }
-        if (typeof window.applyAdvancedGroup === "function") {
-            queuedAdvancedApplyTimers[group] = setTimeout(function() {
-                queuedAdvancedApplyTimers[group] = null;
-                window.applyAdvancedGroup(group, { source: "ui" });
-            }, 90);
-        }
-    };
-    window.resetAdvancedGroup = function(group) {
-        var snapshot = resetAdvancedGroupSettings(group);
-        if (group === "canonOverlay") {
-            canonSettings = ensureAdvancedGroupSettings("canonOverlay");
-        }
-        if (group === "canonOverlay" && mode === "canon") {
-            regenerateCanonMapping({ reason: "reset" });
-        } else if (group === "eternalOverlay" && mode === "eternal") {
-            regenerateEternalOverlay({ reason: "reset" });
-        } else if (group === "jukeboxLoop" && mode === "jukebox") {
-            recomputeLoopGraphForMode("jukebox");
-        } else if (group === "eternalLoop" && mode === "eternal") {
-            recomputeLoopGraphForMode("eternal");
-        }
-        return snapshot;
-    };
-    window.applyAdvancedGroup = function(group, options) {
-        if (group === "canonOverlay") {
-            regenerateCanonMapping(Object.assign({ reason: "apply" }, options));
-        } else if (group === "eternalOverlay") {
-            regenerateEternalOverlay(Object.assign({ reason: "apply" }, options));
-        } else if (group === "jukeboxLoop" && mode === "jukebox") {
-            recomputeLoopGraphForMode("jukebox");
-        } else if (group === "eternalLoop" && mode === "eternal") {
-            recomputeLoopGraphForMode("eternal");
-        }
-    };
-    window.applyImmediateAdvancedSetting = function(group, key, value) {
-        if (!group || key === undefined) {
-            return;
-        }
-        var numericValue = (typeof value === "number") ? value : parseFloat(value);
-        if (!isFinite(numericValue)) {
-            return;
-        }
-
-        var isEnabledFn = (typeof window.isAdvancedGroupEnabled === "function") ? window.isAdvancedGroupEnabled : isAdvancedGroupEnabled;
-        var setEnabledFn = (typeof window.setAdvancedGroupEnabled === "function") ? window.setAdvancedGroupEnabled : setAdvancedGroupEnabledFlag;
-        if (!isEnabledFn(group)) {
-            setEnabledFn(group, true);
-        }
-
-        updateAdvancedGroupSetting(group, key, numericValue);
-
-        var handled = false;
-        if (group === "canonOverlay") {
-            if (!canonAdvancedEnabled) {
-                setCanonAdvancedEnabled(true);
-            }
-            updateCanonSetting(key, numericValue);
-            scheduleCanonGraphRebuild("slider");
-            handled = true;
-        } else if (group === "eternalOverlay") {
-            if (!eternalAdvancedEnabled) {
-                setEternalAdvancedEnabled(true);
-            }
-            scheduleEternalOverlayRecalc("slider");
-            handled = true;
-        } else if (group === "jukeboxLoop") {
-            handled = true;
-            applyLoopFieldToDriver(key, numericValue);
-            scheduleJukeboxLoopRecalc();
-        } else if (group === "eternalLoop") {
-            handled = true;
-            applyLoopFieldToDriver(key, numericValue);
-            scheduleEternalLoopRecalc();
-        }
-
-        if (!handled && typeof window.applyAdvancedGroup === "function") {
-            window.applyAdvancedGroup(group, { source: "immediate" });
-        }
-    };
-    window.getAdvancedPresets = function(group) {
-        return clonePresetList(group);
-    };
-    window.saveAdvancedPreset = function(group, name) {
-        return saveAdvancedPreset(group, name, ensureAdvancedGroupSettings(group));
-    };
-    window.deleteAdvancedPreset = function(group, presetId) {
-        return deleteAdvancedPreset(group, presetId);
-    };
-    window.loadAdvancedPreset = function(group, presetId) {
-        var preset = findPreset(group, presetId);
-        if (!preset) {
-            return null;
-        }
-        advancedSettings[group] = cloneSettings(preset.settings);
-        if (LIVE_ADVANCED_STATE[group]) {
-            LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        } else {
-            LIVE_ADVANCED_STATE[group] = createLiveAdvancedEntry(group);
-        }
-        if (group === "canonOverlay") {
-            canonSettings = ensureAdvancedGroupSettings("canonOverlay");
-        }
-        if (group === "canonOverlay" && mode === "canon") {
-            regenerateCanonMapping({ reason: "preset" });
-        } else if (group === "eternalOverlay" && mode === "eternal") {
-            regenerateEternalOverlay({ reason: "preset" });
-        } else if (group === "jukeboxLoop" && mode === "jukebox") {
-            recomputeLoopGraphForMode("jukebox");
-        } else if (group === "eternalLoop" && mode === "eternal") {
-            recomputeLoopGraphForMode("eternal");
-        }
-        return cloneSettings(preset.settings);
-    };
-    window.exportAdvancedPreset = function(group, presetId) {
-        var preset = findPreset(group, presetId);
-        if (!preset) {
-            return null;
-        }
-        var payload = {
-            version: 1,
-            group: group,
-            name: preset.name,
-            settings: preset.settings
-        };
-        return JSON.stringify(payload, null, 2);
-    };
-    window.importAdvancedPreset = function(group, payload) {
-        if (!payload || typeof payload !== "object") {
-            return null;
-        }
-        var targetGroup = group || payload.group || "canonOverlay";
-        if (!advancedSettings[targetGroup]) {
-            return null;
-        }
-        var imported = saveAdvancedPreset(targetGroup, payload.name, payload.settings);
-        return imported;
     };
 }
 
@@ -1423,38 +817,6 @@ function ensureMinimumOffset(qlist, minAbsOffset, maxAbsOffset) {
     });
 }
 
-function setCanonAdvancedEnabled(enabled) {
-    var normalized = !!enabled;
-    if (normalized === canonAdvancedEnabled) {
-        return;
-    }
-    canonAdvancedEnabled = normalized;
-    setAdvancedGroupEnabledFlag("canonOverlay", normalized);
-    if (canonAdvancedEnabled && masterQs && masterQs.length) {
-        _.each(masterQs, function(q) {
-            calculateNearestNeighborsForQuantum(masterQs, q);
-        });
-    }
-    if (mode === "canon" && masterQs && masterQs.length) {
-        regenerateCanonMapping({ reason: "toggle" });
-    }
-    if (typeof window.onCanonModeChanged === "function") {
-        window.onCanonModeChanged(canonAdvancedEnabled);
-    }
-}
-
-function setEternalAdvancedEnabled(enabled) {
-    var normalized = !!enabled;
-    if (normalized === eternalAdvancedEnabled) {
-        return;
-    }
-    eternalAdvancedEnabled = normalized;
-    setAdvancedGroupEnabledFlag("eternalOverlay", normalized);
-    if (mode === "eternal" && masterQs && masterQs.length) {
-        regenerateEternalOverlay({ reason: "toggle" });
-    }
-}
-
 function augmentCanonNeighbors(qlist, alignment) {
     if (!alignment || !alignment.transitions || !alignment.transitions.length) {
         return;
@@ -1671,11 +1033,7 @@ function allReady() {
                 });
             }
         } else {
-            if (eternalAdvancedEnabled) {
-                regenerateEternalOverlay({ initial: true });
-            } else {
-                assignNormalizedVolumes(masterQs);
-            }
+            assignNormalizedVolumes(masterQs);
             if (typeof window.onCanonTrackReady === "function") {
                 window.onCanonTrackReady(null);
             }
@@ -1689,9 +1047,6 @@ function allReady() {
         if (typeof window.onCanonTrackReady === "function") {
             window.onCanonTrackReady(null);
         }
-    }
-    if (typeof window.onCanonModeChanged === "function") {
-        window.onCanonModeChanged(canonAdvancedEnabled);
     }
 
     isTrackReady = true;
@@ -1806,9 +1161,6 @@ function setPlayingClass(modeName) {
         baseNoteStrength = 0.1;
     } else {
         baseNoteStrength = 0;
-    }
-    if (typeof window.setAdvancedPanelMode === "function") {
-        window.setAdvancedPanelMode((modeName || "").toLowerCase());
     }
     if (typeof window.setCanonUiVisibility === "function") {
         window.setCanonUiVisibility(modeName === "canon");
@@ -2518,7 +1870,7 @@ function createCanonDriver(player) {
                     var si = align.start_index;
                     var duration = trackDuration || (masterQs && masterQs.length ? masterQs[masterQs.length - 1].start + masterQs[masterQs.length - 1].duration : 0);
                     var beats = masterQs || [];
-                    // clamp recommended start if itΓÇÖs too deep into the song
+                    // clamp recommended start if it’s too deep into the song
                     var maxStartTime = Math.min(45, duration * 0.25);
                     if (typeof si === "number" && si >= 0 && si < beats.length) {
                         var siTime = beats[si].start || 0;
@@ -2595,128 +1947,9 @@ function createJukeboxDriver(player, options) {
     var running = false;
     var mtime = $("#mtime");
     var modeName = options.modeName || "jukebox";
-
-    var minLoopBeats = coerceNumber(options.minLoopBeats);
-    if (minLoopBeats === null) {
-        minLoopBeats = 12;
-    }
-    minLoopBeats = Math.max(4, Math.round(minLoopBeats));
-
-    var maxSequentialBeats = coerceNumber(options.maxSequentialBeats);
-    if (maxSequentialBeats === null) {
-        maxSequentialBeats = minLoopBeats * 3;
-    }
-    maxSequentialBeats = Math.max(minLoopBeats + 2, Math.round(maxSequentialBeats));
-
-    var loopThreshold = coerceNumber(options.loopThreshold);
-    if (loopThreshold === null) {
-        loopThreshold = 0.55;
-    }
-    loopThreshold = Math.max(0.05, Math.min(0.99, loopThreshold));
-
-    var sectionBias = clamp01(options.sectionBias !== undefined ? options.sectionBias : 0.6);
-    var jumpVariance = clamp01(options.jumpVariance !== undefined ? options.jumpVariance : 0.4);
-    var sameSectionBonusBase;
-    var crossSectionBonusBase;
-    var recentPenaltyScale;
-    var weightJitterStrength;
-    var spanScaleBase;
-
-    function recalcLoopWeightParams() {
-        sameSectionBonusBase = 0.08 + sectionBias * 0.42;
-        crossSectionBonusBase = 0.08 + (1 - sectionBias) * 0.28;
-        recentPenaltyScale = (1 - sectionBias) * 0.18;
-        weightJitterStrength = jumpVariance * 0.3;
-        spanScaleBase = 1.0 + (1 - jumpVariance) * 0.8;
-    }
-
-    recalcLoopWeightParams();
-
-    function updateMinLoopBeats(value, opts) {
-        var num = coerceNumber(value);
-        if (num === null) {
-            return false;
-        }
-        num = Math.max(4, Math.round(num));
-        if (num === minLoopBeats) {
-            return false;
-        }
-        minLoopBeats = num;
-        if (maxSequentialBeats <= minLoopBeats) {
-            maxSequentialBeats = minLoopBeats + 2;
-        }
-        if (!opts || opts.skipRebuild !== true) {
-            rebuildLoopChoices();
-        }
-        return true;
-    }
-
-    function updateMaxSequentialBeats(value, opts) {
-        var num = coerceNumber(value);
-        if (num === null) {
-            return false;
-        }
-        num = Math.max(minLoopBeats + 2, Math.round(num));
-        if (num === maxSequentialBeats) {
-            return false;
-        }
-        maxSequentialBeats = num;
-        if (!opts || opts.skipReschedule !== true) {
-            scheduleNextJump(true);
-        }
-        return true;
-    }
-
-    function updateLoopThreshold(value, opts) {
-        var num = coerceNumber(value);
-        if (num === null) {
-            return false;
-        }
-        num = Math.max(0.05, Math.min(0.99, num));
-        if (num === loopThreshold) {
-            return false;
-        }
-        loopThreshold = num;
-        if (!opts || opts.skipRebuild !== true) {
-            rebuildLoopChoices();
-        }
-        return true;
-    }
-
-    function updateSectionBias(value, opts) {
-        var num = coerceNumber(value);
-        if (num === null) {
-            return false;
-        }
-        num = clamp01(num);
-        if (num === sectionBias) {
-            return false;
-        }
-        sectionBias = num;
-        recalcLoopWeightParams();
-        if (!opts || opts.skipReschedule !== true) {
-            scheduleNextJump(true);
-        }
-        return true;
-    }
-
-    function updateJumpVariance(value, opts) {
-        var num = coerceNumber(value);
-        if (num === null) {
-            return false;
-        }
-        num = clamp01(num);
-        if (num === jumpVariance) {
-            return false;
-        }
-        jumpVariance = num;
-        recalcLoopWeightParams();
-        if (!opts || opts.skipReschedule !== true) {
-            scheduleNextJump(true);
-        }
-        return true;
-    }
-
+    var minLoopBeats = Math.max(4, options.minLoopBeats || 12);
+    var maxSequentialBeats = Math.max(minLoopBeats + 4, options.maxSequentialBeats || minLoopBeats * 3);
+    var loopThreshold = (typeof options.loopThreshold === "number") ? options.loopThreshold : 0.55;
     var loopChoices = [];
     var loopGraph = {};
     var loopHistory = [];
@@ -2962,20 +2195,9 @@ function createJukeboxDriver(player, options) {
 
     function scheduleNextJump(force) {
         var minB = minLoopBeats;
-        var maxB = Math.max(minB + 1, maxSequentialBeats);
-        var span = Math.max(2, maxB - minB);
-        var bias = jumpVariance;
-        var upperFrac = force ? (0.3 + bias * 0.3) : (0.55 + bias * 0.4);
-        var lowerFrac = force ? Math.max(0, bias * 0.1) : Math.max(0, bias * 0.3);
-        var upper = Math.max(minB + 1, Math.min(maxB, minB + Math.round(span * upperFrac)));
-        var lower = Math.max(minB, Math.min(upper - 1, minB + Math.round(span * lowerFrac)));
-        if (lower >= upper) {
-            lower = Math.max(minB, upper - 1);
-        }
-        if (lower >= upper) {
-            lower = minB;
-        }
-        beatsUntilJump = randomBetween(lower, upper);
+        var maxB = maxSequentialBeats;
+        var upper = force ? Math.max(minB + 2, Math.floor((minB + maxB) / 2)) : maxB;
+        beatsUntilJump = randomBetween(minB, upper);
     }
 
     function recordSectionVisit(sectionIdx) {
@@ -3032,9 +2254,9 @@ function createJukeboxDriver(player, options) {
         var total = 0;
         _.each(filtered, function(edge) {
             var simNorm = Math.max(0, Math.min(1, (edge.similarity + 1) / 2));
-            var spanNorm = Math.min(1, Math.max(0.2, edge.span / (minLoopBeats * spanScaleBase)));
-            var sectionBonus = edge.sameSection ? sameSectionBonusBase : crossSectionBonusBase;
-            var weight = 0.22 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
+            var spanNorm = Math.min(1, Math.max(0.25, edge.span / (minLoopBeats * 1.5)));
+            var sectionBonus = edge.sameSection ? 0.18 : 0.08;
+            var weight = 0.28 + simNorm * 0.5 + spanNorm * 0.25 + sectionBonus;
             var targetSection = null;
             if (masterQs[edge.target] && typeof masterQs[edge.target].section === "number") {
                 targetSection = masterQs[edge.target].section;
@@ -3043,15 +2265,10 @@ function createJukeboxDriver(player, options) {
                 var depth = 0;
                 for (var r = recentSections.length - 1; r >= 0 && depth < 4; r--, depth++) {
                     if (recentSections[r] === targetSection) {
-                        var penalty = recentPenaltyScale * (4 - depth) * 0.35;
-                        weight -= penalty;
+                        weight -= 0.12 * (4 - depth);
                         break;
                     }
                 }
-            }
-            if (weightJitterStrength > 0) {
-                var jitter = (Math.random() * 2 - 1) * weightJitterStrength;
-                weight *= (1 + jitter);
             }
             if (weight < 0.05) {
                 weight = 0.05;
@@ -3158,67 +2375,6 @@ function createJukeboxDriver(player, options) {
         },
         player: player,
 
-        setMinLoopBeats: function(value) {
-            updateMinLoopBeats(value);
-        },
-
-        setMaxSequentialBeats: function(value) {
-            updateMaxSequentialBeats(value);
-        },
-
-        setLoopSimilarityThreshold: function(value) {
-            updateLoopThreshold(value);
-        },
-
-        setLoopSectionBias: function(value) {
-            updateSectionBias(value);
-        },
-
-        setLoopJumpVariance: function(value) {
-            updateJumpVariance(value);
-        },
-
-        recomputeLoopGraph: function(newSettings) {
-            if (!newSettings || typeof newSettings !== "object") {
-                rebuildLoopChoices();
-                return;
-            }
-            var needsRebuild = false;
-            var needsReschedule = false;
-            if (Object.prototype.hasOwnProperty.call(newSettings, "minLoopBeats")) {
-                if (updateMinLoopBeats(newSettings.minLoopBeats, { skipRebuild: true })) {
-                    needsRebuild = true;
-                }
-            }
-            if (Object.prototype.hasOwnProperty.call(newSettings, "maxSequentialBeats")) {
-                if (updateMaxSequentialBeats(newSettings.maxSequentialBeats, { skipReschedule: true })) {
-                    needsReschedule = true;
-                }
-            }
-            if (Object.prototype.hasOwnProperty.call(newSettings, "loopThreshold")) {
-                if (updateLoopThreshold(newSettings.loopThreshold, { skipRebuild: true })) {
-                    needsRebuild = true;
-                }
-            }
-            if (Object.prototype.hasOwnProperty.call(newSettings, "sectionBias")) {
-                if (updateSectionBias(newSettings.sectionBias, { skipReschedule: true })) {
-                    needsReschedule = true;
-                }
-            }
-            if (Object.prototype.hasOwnProperty.call(newSettings, "jumpVariance")) {
-                if (updateJumpVariance(newSettings.jumpVariance, { skipReschedule: true })) {
-                    needsReschedule = true;
-                }
-            }
-            if (needsRebuild) {
-                rebuildLoopChoices();
-            } else if (needsReschedule) {
-                scheduleNextJump(true);
-            } else {
-                rebuildLoopChoices();
-            }
-        },
-
         setNextQ: function(q) {
             currentIndex = q.which;
             if (!running) {
@@ -3235,9 +2391,17 @@ function createJukeboxDriver(player, options) {
 
 function Driver(player) {
     if (mode === "jukebox") {
-        return createJukeboxDriver(player, getLoopSettingsForMode("jukebox"));
+        return createJukeboxDriver(player, {
+            modeName: "jukebox",
+            minLoopBeats: 12,
+            loopThreshold: 0.55
+        });
     } else if (mode === "eternal") {
-        return createJukeboxDriver(player, getLoopSettingsForMode("eternal"));
+        return createJukeboxDriver(player, {
+            modeName: "eternal",
+            minLoopBeats: 8,
+            loopThreshold: 0.5
+        });
     }
     return createCanonDriver(player);
 }

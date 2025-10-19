@@ -859,6 +859,31 @@ if (typeof window !== "undefined") {
             rebuildDriverForCurrentMode(true);
         }
     };
+    window.applyImmediateAdvancedSetting = function(group, key, value) {
+        if (!group) {
+            return;
+        }
+        if (typeof window.setAdvancedGroupEnabled === "function") {
+            window.setAdvancedGroupEnabled(group, true);
+        }
+        updateAdvancedGroupSetting(group, key, value);
+        if (group === "canonOverlay") {
+            updateCanonSetting(key, value);
+        } else if (group === "eternalOverlay") {
+            ensureAdvancedGroupSettings("eternalOverlay")[key] = value;
+            regenerateEternalOverlay({ reason: "ui" });
+        } else if (group === "jukeboxLoop") {
+            ensureAdvancedGroupSettings("jukeboxLoop")[key] = value;
+            if (mode === "jukebox") {
+                rebuildDriverForCurrentMode(true);
+            }
+        } else if (group === "eternalLoop") {
+            ensureAdvancedGroupSettings("eternalLoop")[key] = value;
+            if (mode === "eternal") {
+                rebuildDriverForCurrentMode(true);
+            }
+        }
+    };
     window.getAdvancedPresets = function(group) {
         return clonePresetList(group);
     };

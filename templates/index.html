@@ -396,7 +396,6 @@
 
         const advancedDomMap = Object.create(null);
         const advancedSectionNodes = Object.create(null);
-        const pendingApplyTimers = Object.create(null);
         let advancedUiReady = false;
         let pendingAdvancedMode = currentModeKey;
 
@@ -669,12 +668,25 @@
                 return;
             }
             const value = parseFloat(input.value);
-            if (typeof window.updateAdvancedGroupSetting === 'function') {
-                window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
+            if (Number.isNaN(value)) {
+                return;
             }
+            if (typeof window.applyImmediateAdvancedSetting === 'function') {
+                window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+            } else {
+                if (typeof window.setAdvancedGroupEnabled === 'function') {
+                    window.setAdvancedGroupEnabled(groupKey, true);
+                }
+                if (typeof window.updateAdvancedGroupSetting === 'function') {
+                    window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
+                }
+                if (typeof window.applyAdvancedGroup === 'function') {
+                    window.applyAdvancedGroup(groupKey, { source: 'ui' });
+                }
+            }
+            syncGroupFromState(groupKey);
             updateValueLabel(groupKey, fieldKey, value);
             enforceGroupConstraints(groupKey);
-            scheduleAdvancedApply(groupKey, 'slider');
         }
 
         function handleAdvancedReset(event) {
@@ -685,26 +697,10 @@
             }
             window.resetAdvancedGroup(groupKey);
             syncGroupFromState(groupKey);
-            scheduleAdvancedApply(groupKey, 'reset');
-        }
-
-        function scheduleAdvancedApply(groupKey, reason) {
-            if (!isGroupEnabled(groupKey)) {
-                return;
-            }
-            if (reason === 'slider') {
-                return;
-            }
             if (typeof window.applyAdvancedGroup !== 'function') {
                 return;
             }
-            if (pendingApplyTimers[groupKey]) {
-                clearTimeout(pendingApplyTimers[groupKey]);
-            }
-            pendingApplyTimers[groupKey] = setTimeout(() => {
-                pendingApplyTimers[groupKey] = null;
-                window.applyAdvancedGroup(groupKey, { source: reason || 'ui' });
-            }, 90);
+            window.applyAdvancedGroup(groupKey, { source: 'reset' });
         }
 
         function setGroupEnabled(groupKey, enabled) {
@@ -756,7 +752,7 @@
             if (!dom) {
                 return;
             }
-            const disabledFlag = !!disabled;
+            const disabledFlag = !!disabled && !advancedSidebarVisible;
             Object.values(dom.inputs).forEach((input) => {
                 input.disabled = disabledFlag;
             });

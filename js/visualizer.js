@@ -95,21 +95,6 @@ var advancedEnabled = {
     eternalLoop: false
 };
 
-function createLiveAdvancedEntry(group) {
-    return {
-        enabled: !!advancedEnabled[group],
-        settings: advancedSettings[group],
-        defaults: cloneAdvancedDefaults(group)
-    };
-}
-
-var LIVE_ADVANCED_STATE = {
-    canonOverlay: createLiveAdvancedEntry("canonOverlay"),
-    eternalOverlay: createLiveAdvancedEntry("eternalOverlay"),
-    jukeboxLoop: createLiveAdvancedEntry("jukeboxLoop"),
-    eternalLoop: createLiveAdvancedEntry("eternalLoop")
-};
-
 var eternalAdvancedEnabled = false;
 
 var advancedPresets = {
@@ -120,10 +105,6 @@ var advancedPresets = {
 };
 
 var queuedAdvancedApplyTimers = Object.create(null);
-
-function getLiveGroupState(group) {
-    return LIVE_ADVANCED_STATE[group] || null;
-}
 
 function recomputeLoopGraphForMode(modeName) {
     if (!modeName) {
@@ -162,6 +143,14 @@ var scheduleJukeboxLoopRecalc = debounce(function() {
 var scheduleEternalLoopRecalc = debounce(function() {
     recomputeLoopGraphForMode("eternal");
 }, 150);
+
+function triggerCanonOverlayRefresh(fieldKey) {
+    if (fieldKey === "minOffsetBeats" || fieldKey === "maxOffsetBeats") {
+        scheduleCanonGraphRebuild("offset-change");
+        return;
+    }
+    regenerateCanonMapping({ reason: "live-update", field: fieldKey });
+}
 
 function applyLoopFieldToDriver(fieldKey, value) {
     if (!driver) {
@@ -211,9 +200,6 @@ function isAdvancedGroupEnabled(group) {
 function setAdvancedGroupEnabledFlag(group, enabled) {
     var normalized = !!enabled;
     advancedEnabled[group] = normalized;
-    if (LIVE_ADVANCED_STATE[group]) {
-        LIVE_ADVANCED_STATE[group].enabled = normalized;
-    }
     if (group === "canonOverlay") {
         canonAdvancedEnabled = normalized;
     } else if (group === "eternalOverlay") {
@@ -224,11 +210,6 @@ function setAdvancedGroupEnabledFlag(group, enabled) {
 function ensureAdvancedGroupSettings(group) {
     if (!advancedSettings[group]) {
         advancedSettings[group] = cloneAdvancedDefaults(group);
-        if (LIVE_ADVANCED_STATE[group]) {
-            LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        } else {
-            LIVE_ADVANCED_STATE[group] = createLiveAdvancedEntry(group);
-        }
     }
     return advancedSettings[group];
 }
@@ -243,16 +224,6 @@ function updateAdvancedGroupSetting(group, key, value) {
 function resetAdvancedGroupSettings(group) {
     var defaults = cloneAdvancedDefaults(group);
     advancedSettings[group] = cloneSettings(defaults);
-    if (LIVE_ADVANCED_STATE[group]) {
-        LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        LIVE_ADVANCED_STATE[group].defaults = defaults;
-    } else {
-        LIVE_ADVANCED_STATE[group] = {
-            enabled: !!advancedEnabled[group],
-            settings: advancedSettings[group],
-            defaults: defaults
-        };
-    }
     return cloneAdvancedState(group);
 }
 
@@ -968,7 +939,11 @@ function updateCanonSetting(key, value) {
         canonSettings[key] = value;
     }
     if (mode === "canon" && masterQs && masterQs.length) {
-        scheduleCanonGraphRebuild("setting");
+        if (key === "minOffsetBeats" || key === "maxOffsetBeats") {
+            scheduleCanonGraphRebuild("setting");
+        } else {
+            regenerateCanonMapping({ reason: "setting", field: key });
+        }
     }
 }
 
@@ -990,20 +965,10 @@ if (typeof window !== "undefined") {
     window.isEternalAdvancedEnabled = function() { return eternalAdvancedEnabled; };
     window.getAdvancedDefaults = function(group) { return cloneAdvancedDefaults(group); };
     window.getAdvancedSettings = function(group) {
-        var state = getLiveGroupState(group);
-        if (!state) {
-            return {
-                enabled: isAdvancedGroupEnabled(group),
-                settings: cloneAdvancedState(group),
-                defaults: cloneAdvancedDefaults(group)
-            };
-        }
-        var settingsSnapshot = state.settings ? cloneSettings(state.settings) : cloneAdvancedState(group);
-        var defaultsSnapshot = state.defaults ? cloneSettings(state.defaults) : cloneAdvancedDefaults(group);
         return {
-            enabled: !!state.enabled,
-            settings: settingsSnapshot,
-            defaults: defaultsSnapshot
+            enabled: isAdvancedGroupEnabled(group),
+            settings: cloneAdvancedState(group),
+            defaults: cloneAdvancedDefaults(group)
         };
     };
     window.setAdvancedGroupEnabled = function(group, enabled) {
@@ -1102,7 +1067,7 @@ if (typeof window !== "undefined") {
                 setCanonAdvancedEnabled(true);
             }
             updateCanonSetting(key, numericValue);
-            scheduleCanonGraphRebuild("slider");
+            triggerCanonOverlayRefresh(key);
             handled = true;
         } else if (group === "eternalOverlay") {
             if (!eternalAdvancedEnabled) {
@@ -1139,11 +1104,6 @@ if (typeof window !== "undefined") {
             return null;
         }
         advancedSettings[group] = cloneSettings(preset.settings);
-        if (LIVE_ADVANCED_STATE[group]) {
-            LIVE_ADVANCED_STATE[group].settings = advancedSettings[group];
-        } else {
-            LIVE_ADVANCED_STATE[group] = createLiveAdvancedEntry(group);
-        }
         if (group === "canonOverlay") {
             canonSettings = ensureAdvancedGroupSettings("canonOverlay");
         }

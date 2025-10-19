@@ -649,17 +649,39 @@
             if (!groupKey) {
                 return;
             }
-        const enabled = checkbox.checked;
-        setGroupEnabled(groupKey, enabled);
-        setGroupInputsDisabled(groupKey, !enabled);
-        syncGroupFromState(groupKey);
-        if (enabled) {
-            setGroupCollapsed(groupKey, false);
-            scheduleAdvancedApply(groupKey, 'toggle');
-        } else {
-            setGroupCollapsed(groupKey, true);
+            const enabled = checkbox.checked;
+            setGroupEnabled(groupKey, enabled);
+            setGroupInputsDisabled(groupKey, !enabled);
+            syncGroupFromState(groupKey);
+            if (enabled) {
+                setGroupCollapsed(groupKey, false);
+                forceAdvancedApply(groupKey, null, null, 'toggle');
+            } else {
+                setGroupCollapsed(groupKey, true);
+            }
         }
-    }
+
+        function forceAdvancedApply(groupKey, fieldKey, value, sourceTag) {
+            const source = sourceTag || 'ui';
+            if (typeof window.setAdvancedGroupEnabled === 'function') {
+                window.setAdvancedGroupEnabled(groupKey, true);
+            }
+            if (typeof window.updateAdvancedGroupSetting === 'function' && fieldKey !== null && fieldKey !== undefined && value !== null && !Number.isNaN(value)) {
+                window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
+            }
+            if (typeof window.applyImmediateAdvancedSetting === 'function' && fieldKey !== null && fieldKey !== undefined && value !== null && !Number.isNaN(value)) {
+                window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+            }
+            if (typeof window.applyAdvancedGroup === 'function') {
+                window.applyAdvancedGroup(groupKey, { source });
+            } else if (groupKey === 'canonOverlay' && typeof window.regenerateCanonMappingManually === 'function') {
+                window.regenerateCanonMappingManually();
+            } else if (groupKey === 'eternalOverlay' && typeof window.regenerateEternalOverlay === 'function') {
+                window.regenerateEternalOverlay({ source });
+            } else {
+                syncGroupFromState(groupKey);
+            }
+        }
 
         function handleAdvancedFieldInput(event) {
             const input = event.currentTarget;
@@ -674,12 +696,16 @@
             }
             updateValueLabel(groupKey, fieldKey, value);
             enforceGroupConstraints(groupKey);
+            forceAdvancedApply(groupKey, fieldKey, value, 'input');
         }
 
         function handleAdvancedFieldCommit(event) {
             const input = event.currentTarget;
-            const groupKey = input && input.dataset ? input.dataset.groupKey : null;
-            const fieldKey = input && input.dataset ? input.dataset.fieldKey : null;
+            if (!input || !input.dataset) {
+                return;
+            }
+            const groupKey = input.dataset.groupKey;
+            const fieldKey = input.dataset.fieldKey;
             if (!groupKey || !fieldKey) {
                 return;
             }
@@ -687,22 +713,9 @@
             if (Number.isNaN(value)) {
                 return;
             }
-            if (typeof window.applyImmediateAdvancedSetting === 'function') {
-                window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
-            } else {
-                if (typeof window.setAdvancedGroupEnabled === 'function') {
-                    window.setAdvancedGroupEnabled(groupKey, true);
-                }
-                if (typeof window.updateAdvancedGroupSetting === 'function') {
-                    window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
-                }
-                if (typeof window.applyAdvancedGroup === 'function') {
-                    window.applyAdvancedGroup(groupKey, { source: 'ui' });
-                }
-            }
-            syncGroupFromState(groupKey);
             updateValueLabel(groupKey, fieldKey, value);
             enforceGroupConstraints(groupKey);
+            forceAdvancedApply(groupKey, fieldKey, value, event && event.type ? event.type : 'commit');
         }
 
         function handleAdvancedReset(event) {
@@ -768,7 +781,7 @@
             if (!dom) {
                 return;
             }
-            const disabledFlag = !!disabled;
+            const disabledFlag = !!disabled && !advancedSidebarVisible;
             Object.values(dom.inputs).forEach((input) => {
                 input.disabled = disabledFlag;
             });

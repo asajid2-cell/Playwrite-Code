@@ -360,7 +360,7 @@
 
         async function processPlaylist(entries, form) {
             const submitButton = form.querySelector('button[type="submit"]');
-            const algorithm = form.querySelector('input[name="algorithm"]:checked').value;
+            const algorithm = form.querySelector('input[name="algorithm"]').value;
             submitButton.disabled = true;
 
             const trackIds = [];

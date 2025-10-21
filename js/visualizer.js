@@ -152,31 +152,53 @@ function triggerCanonOverlayRefresh(fieldKey) {
     regenerateCanonMapping({ reason: "live-update", field: fieldKey });
 }
 
+function refreshJukeboxVisualization() {
+    if (!masterQs || !masterQs.length) {
+        return;
+    }
+    if (mode !== "jukebox" && mode !== "eternal") {
+        return;
+    }
+    var loopEdges = collectVisualizationLoops(80);
+    if (mode === "jukebox") {
+        drawLoopConnections(masterQs, loopEdges, false);
+    } else if (mode === "eternal") {
+        // Redraw both canon overlays and loop connections
+        drawConnections(masterQs);
+        drawLoopConnections(masterQs, loopEdges, true);
+    }
+}
+
 function applyLoopFieldToDriver(fieldKey, value) {
     if (!driver) {
         return false;
     }
+    var applied = false;
     if (fieldKey === "minLoopBeats" && typeof driver.setMinLoopBeats === "function") {
         driver.setMinLoopBeats(value);
-        return true;
-    }
-    if (fieldKey === "maxSequentialBeats" && typeof driver.setMaxSequentialBeats === "function") {
+        applied = true;
+    } else if (fieldKey === "maxSequentialBeats" && typeof driver.setMaxSequentialBeats === "function") {
         driver.setMaxSequentialBeats(value);
-        return true;
-    }
-    if (fieldKey === "loopThreshold" && typeof driver.setLoopSimilarityThreshold === "function") {
+        applied = true;
+    } else if (fieldKey === "loopThreshold" && typeof driver.setLoopSimilarityThreshold === "function") {
         driver.setLoopSimilarityThreshold(value);
-        return true;
-    }
-    if (fieldKey === "sectionBias" && typeof driver.setLoopSectionBias === "function") {
+        applied = true;
+    } else if (fieldKey === "sectionBias" && typeof driver.setLoopSectionBias === "function") {
         driver.setLoopSectionBias(value);
-        return true;
-    }
-    if (fieldKey === "jumpVariance" && typeof driver.setLoopJumpVariance === "function") {
+        applied = true;
+    } else if (fieldKey === "jumpVariance" && typeof driver.setLoopJumpVariance === "function") {
         driver.setLoopJumpVariance(value);
-        return true;
+        applied = true;
     }
-    return false;
+
+    // Immediately refresh visualization for fields that affect the loop graph
+    if (applied && (fieldKey === "minLoopBeats" || fieldKey === "loopThreshold")) {
+        // These trigger rebuildLoopChoices internally, visualization update happens there
+    } else if (applied) {
+        // For other fields (sectionBias, jumpVariance, maxSequentialBeats), manually refresh
+        refreshJukeboxVisualization();
+    }
+    return applied;
 }
 
 function cloneAdvancedState(group) {
@@ -858,9 +880,12 @@ function regenerateEternalOverlay(options) {
     restoreBaseCanonMapping(masterQs);
     if (!eternalAdvancedEnabled) {
         assignNormalizedVolumes(masterQs);
+        drawConnections(masterQs);
         return;
     }
     regenerateOverlayFromSettings(advancedSettings.eternalOverlay, { targetMode: "eternal" });
+    // Redraw canon overlay connections to show the updated mapping
+    drawConnections(masterQs);
 }
 
 function regenerateOverlayFromSettings(settings, details) {
@@ -1631,6 +1656,10 @@ function allReady() {
                 });
             }
         } else {
+            // Enable eternal overlay by default for eternal mode
+            if (mode === "eternal" && !eternalAdvancedEnabled) {
+                setEternalAdvancedEnabled(true);
+            }
             if (eternalAdvancedEnabled) {
                 regenerateEternalOverlay({ initial: true });
             } else {
@@ -3022,6 +3051,21 @@ function createJukeboxDriver(player, options) {
         loopHistory = [];
         recentSections = [];
         scheduleNextJump(true);
+
+        // Update global canonLoopCandidates so visualization can see the filtered loops
+        if (typeof canonLoopCandidates !== "undefined") {
+            canonLoopCandidates = loops.slice(0);
+        }
+
+        // Refresh visualization to show updated loop connections
+        if (masterQs && masterQs.length && (mode === "jukebox" || mode === "eternal")) {
+            var loopEdges = collectVisualizationLoops(80);
+            if (mode === "jukebox") {
+                drawLoopConnections(masterQs, loopEdges, false);
+            } else if (mode === "eternal") {
+                drawLoopConnections(masterQs, loopEdges, true);
+            }
+        }
     }
 
     function findRetreatPoint() {

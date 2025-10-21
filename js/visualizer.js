@@ -214,7 +214,7 @@ function ensureAdvancedGroupSettings(group) {
     return advancedSettings[group];
 }
 
-function updateAdvancedGroupSetting(group, key, value) {
+function setAdvancedGroupSettingValue(group, key, value) {
     var target = ensureAdvancedGroupSettings(group);
     if (target && key !== undefined) {
         target[key] = value;
@@ -991,9 +991,9 @@ if (typeof window !== "undefined") {
             recomputeLoopGraphForMode("eternal");
         }
     };
-    window.isAdvancedGroupEnabled = function(group) { return isAdvancedGroupEnabled(group); };
+    window.isAdvancedGroupEnabled = isAdvancedGroupEnabled;
     window.updateAdvancedGroupSetting = function(group, key, value) {
-        updateAdvancedGroupSetting(group, key, value);
+        setAdvancedGroupSettingValue(group, key, value);
         if (group === "canonOverlay") {
             updateCanonSetting(key, value);
             return;
@@ -1059,7 +1059,7 @@ if (typeof window !== "undefined") {
             setEnabledFn(group, true);
         }
 
-        updateAdvancedGroupSetting(group, key, numericValue);
+        setAdvancedGroupSettingValue(group, key, numericValue);
 
         var handled = false;
         if (group === "canonOverlay") {

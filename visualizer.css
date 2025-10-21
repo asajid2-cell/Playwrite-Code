@@ -76,12 +76,12 @@ body.advanced-expanded .viz-stage {
 body.advanced-expanded .viz-sidebar {
     display: block;
     position: sticky;
-    top: -60px;
-    flex: 0 0 clamp(300px, 26%, 400px);
-    max-width: 400px;
-    min-width: 280px;
+    top: -80px;
+    flex: 0 0 clamp(320px, 28%, 420px);
+    max-width: 420px;
+    min-width: 300px;
     z-index: 2;
-    margin-left: 20px;
+    margin-left: 40px;
 }
 
 body.advanced-expanded .advanced-shell {
@@ -554,13 +554,13 @@ body.advanced-expanded #tiles {
 
 @media (min-width: 1180px) {
     body.advanced-expanded .advanced-shell {
-        max-width: 460px;
+        max-width: 480px;
     }
     body.advanced-expanded .advanced-fields {
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
     body.advanced-expanded .viz-sidebar {
-        flex-basis: clamp(340px, 26%, 460px);
+        flex-basis: clamp(360px, 28%, 480px);
     }
 }
 

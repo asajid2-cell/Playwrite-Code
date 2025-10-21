@@ -1043,10 +1043,12 @@ if (typeof window !== "undefined") {
         }
     };
     window.resetAdvancedGroup = function(group) {
+        console.log('[resetAdvancedGroup] Resetting group:', group, 'mode:', mode);
         var snapshot = resetAdvancedGroupSettings(group);
         if (group === "canonOverlay") {
             canonSettings = ensureAdvancedGroupSettings("canonOverlay");
         }
+        // Immediately apply the reset and regenerate visualization
         if (group === "canonOverlay" && mode === "canon") {
             regenerateCanonMapping({ reason: "reset" });
         } else if (group === "eternalOverlay" && mode === "eternal") {
@@ -1056,6 +1058,7 @@ if (typeof window !== "undefined") {
         } else if (group === "eternalLoop" && mode === "eternal") {
             recomputeLoopGraphForMode("eternal");
         }
+        console.log('[resetAdvancedGroup] Reset complete, new settings:', advancedSettings[group]);
         return snapshot;
     };
     window.applyAdvancedGroup = function(group, options) {

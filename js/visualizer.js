@@ -1661,6 +1661,16 @@ function allReady() {
     pulseNotes(baseNoteStrength);
     $("#mode-pill").text(mode === "jukebox" ? "Eternal Jukebox" : (mode === "eternal" ? "Eternal Canonizer" : "Autocanonizer"));
 
+    // Show/hide eternal stats based on initial mode
+    var eternalStatsContainer = $("#eternal-stats");
+    if (eternalStatsContainer && eternalStatsContainer.length) {
+        if (mode === "jukebox" || mode === "eternal") {
+            eternalStatsContainer.show();
+        } else {
+            eternalStatsContainer.hide();
+        }
+    }
+
     info("ready!");
     if (mode === "jukebox") {
         info(getFullTitle() + " - Eternal Jukebox");
@@ -2158,7 +2168,7 @@ function collectVisualizationLoops(limit) {
     return edges;
 }
 
-function drawLoopConnections(qlist, edges) {
+function drawLoopConnections(qlist, edges, isEternalMode) {
     clearLoopPaths();
     if (!edges || !edges.length) {
         return;
@@ -2191,6 +2201,10 @@ function drawLoopConnections(qlist, edges) {
         return;
     }
     maxSpan = Math.max(1, maxSpan);
+
+    // Use different colors for eternal mode vs jukebox mode
+    var loopColor = isEternalMode ? "#F0A86B" : "#6B8AF0"; // Orange for eternal, blue for jukebox
+
     _.each(normalized, function(info, idx) {
         var qSrc = info.sourceBeat;
         var qDst = info.targetBeat;
@@ -2206,7 +2220,7 @@ function drawLoopConnections(qlist, edges) {
         var strokeWidth = 1.4 + simNorm * 2.6;
         var opacity = 0.18 + simNorm * 0.55;
         path.attr({
-            stroke: "#6B8AF0",
+            stroke: loopColor,
             "stroke-width": strokeWidth,
             "stroke-opacity": opacity
         });
@@ -2234,9 +2248,14 @@ function createTiles(qlist) {
     }
     if (mode === "canon") {
         drawConnections(qlist);
-    } else if (mode === "jukebox" || mode === "eternal") {
+    } else if (mode === "jukebox") {
         var loopEdges = collectVisualizationLoops(80);
-        drawLoopConnections(qlist, loopEdges);
+        drawLoopConnections(qlist, loopEdges, false);
+    } else if (mode === "eternal") {
+        // Draw both canon overlay connections AND loop connections with different colors
+        drawConnections(qlist);
+        var loopEdges = collectVisualizationLoops(80);
+        drawLoopConnections(qlist, loopEdges, true);
     }
     updateCursors(qlist[0]);
     return tiles;
@@ -2556,6 +2575,15 @@ function createJukeboxDriver(player, options) {
     var mtime = $("#mtime");
     var modeName = options.modeName || "jukebox";
 
+    // Stats tracking for eternal modes
+    var totalBeatsPlayed = 0;
+    var sessionStartTime = null;
+    var listenTimeSeconds = 0;
+    var statsUpdateInterval = null;
+    var listenTimeDisplay = $("#listen-time");
+    var beatsPlayedDisplay = $("#beats-played");
+    var eternalStatsContainer = $("#eternal-stats");
+
     var minLoopBeats = coerceNumber(options.minLoopBeats);
     if (minLoopBeats === null) {
         minLoopBeats = 12;
@@ -2591,6 +2619,56 @@ function createJukeboxDriver(player, options) {
     }
 
     recalcLoopWeightParams();
+
+    function updateStatsDisplay() {
+        if (beatsPlayedDisplay && beatsPlayedDisplay.length) {
+            beatsPlayedDisplay.text(totalBeatsPlayed.toLocaleString());
+        }
+        if (listenTimeDisplay && listenTimeDisplay.length) {
+            var minutes = Math.floor(listenTimeSeconds / 60);
+            var seconds = Math.floor(listenTimeSeconds % 60);
+            listenTimeDisplay.text(
+                String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0')
+            );
+        }
+    }
+
+    function startStatsTracking() {
+        if (!sessionStartTime) {
+            sessionStartTime = Date.now();
+        }
+        if (eternalStatsContainer && eternalStatsContainer.length) {
+            eternalStatsContainer.show();
+        }
+        if (!statsUpdateInterval) {
+            statsUpdateInterval = setInterval(function() {
+                if (running && sessionStartTime) {
+                    listenTimeSeconds = Math.floor((Date.now() - sessionStartTime) / 1000);
+                    updateStatsDisplay();
+                }
+            }, 1000);
+        }
+    }
+
+    function stopStatsTracking() {
+        if (statsUpdateInterval) {
+            clearInterval(statsUpdateInterval);
+            statsUpdateInterval = null;
+        }
+    }
+
+    function resetStats() {
+        totalBeatsPlayed = 0;
+        sessionStartTime = null;
+        listenTimeSeconds = 0;
+        stopStatsTracking();
+        updateStatsDisplay();
+    }
+
+    function incrementBeatCount() {
+        totalBeatsPlayed++;
+        updateStatsDisplay();
+    }
 
     function updateMinLoopBeats(value, opts) {
         var num = coerceNumber(value);
@@ -2654,6 +2732,7 @@ function createJukeboxDriver(player, options) {
         }
         sectionBias = num;
         recalcLoopWeightParams();
+        console.log('[updateSectionBias]', num, '→ sameSectionBonus:', sameSectionBonusBase.toFixed(3), 'crossSectionBonus:', crossSectionBonusBase.toFixed(3));
         if (!opts || opts.skipReschedule !== true) {
             scheduleNextJump(true);
         }
@@ -2671,6 +2750,7 @@ function createJukeboxDriver(player, options) {
         }
         jumpVariance = num;
         recalcLoopWeightParams();
+        console.log('[updateJumpVariance]', num, '→ weightJitter:', weightJitterStrength.toFixed(3), 'spanScale:', spanScaleBase.toFixed(3));
         if (!opts || opts.skipReschedule !== true) {
             scheduleNextJump(true);
         }
@@ -2685,6 +2765,7 @@ function createJukeboxDriver(player, options) {
     var recentSections = [];
     var sectionAnchors = [];
     var orderedSectionAnchors = [];
+    var retreatPoint = null; // Fallback jump from end back to beginning
 
     (function initializeSectionAnchors() {
         if (!masterQs || !masterQs.length) {
@@ -2718,6 +2799,7 @@ function createJukeboxDriver(player, options) {
         setURL();
         setPlayingClass(null);
         pulseNotes(baseNoteStrength);
+        stopStatsTracking();
     }
 
     function randomBetween(min, max) {
@@ -2864,25 +2946,47 @@ function createJukeboxDriver(player, options) {
     }
 
     function rebuildLoopChoices() {
+        console.log('[rebuildLoopChoices] minLoopBeats:', minLoopBeats, 'loopThreshold:', loopThreshold);
         loopGraph = {};
         var loops = [];
-        if (canonLoopCandidates && canonLoopCandidates.length) {
-            _.each(canonLoopCandidates, function(loop) {
-                var normalized = normalizeLoop(loop);
-                if (normalized && normalized.similarity >= loopThreshold) {
-                    loops.push(normalized);
-                    registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
-                }
-            });
-        }
-        if (!loops.length) {
-            _.each(collectLoopEdgesFromServer(loopThreshold, minLoopBeats), function(loop) {
+
+        // Always try to use server loop data first (it has the most comprehensive data)
+        var serverEdges = collectLoopEdgesFromServer(loopThreshold, minLoopBeats);
+        if (serverEdges && serverEdges.length) {
+            var totalServerEdges = serverEdges.length;
+            var sampleSims = [];
+            _.each(serverEdges, function(loop) {
                 var normalized = normalizeLoop(loop);
                 if (normalized) {
+                    if (sampleSims.length < 10) {
+                        sampleSims.push(normalized.similarity.toFixed(3));
+                    }
                     loops.push(normalized);
                     registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
                 }
             });
+            console.log('[rebuildLoopChoices] Using server edges. Total:', totalServerEdges, 'Normalized:', loops.length, 'Sample sims:', sampleSims.join(', '));
+        }
+
+        // Fallback to canonLoopCandidates only if server data is missing
+        if (!loops.length && canonLoopCandidates && canonLoopCandidates.length) {
+            var totalCandidates = canonLoopCandidates.length;
+            var passedCount = 0;
+            var sampleSims = [];
+            _.each(canonLoopCandidates, function(loop) {
+                var normalized = normalizeLoop(loop);
+                if (normalized) {
+                    if (sampleSims.length < 10) {
+                        sampleSims.push(normalized.similarity.toFixed(3));
+                    }
+                    if (normalized.similarity >= loopThreshold) {
+                        loops.push(normalized);
+                        registerEdge(normalized.source_start, normalized.target_start, normalized.similarity, normalized.span);
+                        passedCount++;
+                    }
+                }
+            });
+            console.log('[rebuildLoopChoices] Using canonLoopCandidates. Total:', totalCandidates, 'Passed threshold:', passedCount, 'Sample sims:', sampleSims.join(', '));
         }
         if (!loops.length) {
             _.each(collectFallbackLoops(masterQs, minLoopBeats), function(loop) {
@@ -2918,6 +3022,59 @@ function createJukeboxDriver(player, options) {
         loopHistory = [];
         recentSections = [];
         scheduleNextJump(true);
+    }
+
+    function findRetreatPoint() {
+        retreatPoint = null;
+        if (!masterQs || masterQs.length < 40) {
+            return;
+        }
+
+        // Define "end zone" as last 20% of track and "start zone" as first 30%
+        var endZoneStart = Math.floor(masterQs.length * 0.8);
+        var startZoneEnd = Math.floor(masterQs.length * 0.3);
+
+        var bestRetreat = null;
+        var bestSimilarity = -1;
+
+        // Search for the best jump from end zone to start zone
+        for (var srcIdx = endZoneStart; srcIdx < masterQs.length; srcIdx++) {
+            var edges = loopGraph[srcIdx];
+            if (!edges || !edges.length) {
+                continue;
+            }
+            _.each(edges, function(edge) {
+                if (edge.target < startZoneEnd && edge.similarity > bestSimilarity) {
+                    bestSimilarity = edge.similarity;
+                    bestRetreat = {
+                        source: srcIdx,
+                        target: edge.target,
+                        similarity: edge.similarity
+                    };
+                }
+            });
+        }
+
+        // If no good retreat found in loop graph, create one based on section similarity
+        if (!bestRetreat && orderedSectionAnchors.length > 2) {
+            var lastSection = orderedSectionAnchors[orderedSectionAnchors.length - 1];
+            var firstSection = orderedSectionAnchors[0];
+            if (lastSection && firstSection && lastSection > endZoneStart && firstSection < startZoneEnd) {
+                bestRetreat = {
+                    source: lastSection,
+                    target: firstSection,
+                    similarity: 0.45 // Moderate similarity fallback
+                };
+            }
+        }
+
+        retreatPoint = bestRetreat;
+        if (retreatPoint) {
+            console.log('[findRetreatPoint] Found retreat:', retreatPoint.source, '→', retreatPoint.target,
+                        'similarity:', retreatPoint.similarity.toFixed(3));
+        } else {
+            console.log('[findRetreatPoint] No suitable retreat point found');
+        }
     }
 
     function scheduleNextJump(force) {
@@ -2990,7 +3147,14 @@ function createJukeboxDriver(player, options) {
         }
         var weights = [];
         var total = 0;
+        var sameSectionCount = 0;
+        var crossSectionCount = 0;
         _.each(filtered, function(edge) {
+            if (edge.sameSection) {
+                sameSectionCount++;
+            } else {
+                crossSectionCount++;
+            }
             var simNorm = Math.max(0, Math.min(1, (edge.similarity + 1) / 2));
             var spanNorm = Math.min(1, Math.max(0.2, edge.span / (minLoopBeats * spanScaleBase)));
             var sectionBonus = edge.sameSection ? sameSectionBonusBase : crossSectionBonusBase;
@@ -3023,13 +3187,22 @@ function createJukeboxDriver(player, options) {
             return filtered[Math.floor(Math.random() * filtered.length)];
         }
         var pick = Math.random() * total;
+        var selectedIdx = -1;
         for (var i = 0; i < filtered.length; i++) {
             pick -= weights[i];
             if (pick <= 0) {
-                return filtered[i];
+                selectedIdx = i;
+                break;
             }
         }
-        return filtered[filtered.length - 1];
+        if (selectedIdx === -1) {
+            selectedIdx = filtered.length - 1;
+        }
+        var selected = filtered[selectedIdx];
+        console.log('[selectJumpCandidate] Beat', src, '→', selected.target, '| Candidates:', filtered.length,
+                    '(same-section:', sameSectionCount, 'cross-section:', crossSectionCount + ')',
+                    '| Selected weight:', weights[selectedIdx].toFixed(3), '| sameSection:', selected.sameSection);
+        return selected;
     }
 
     function advanceSequential() {
@@ -3045,10 +3218,41 @@ function createJukeboxDriver(player, options) {
         if (!masterQs || !masterQs.length) {
             return;
         }
+
+        // Check if we're in the end zone and should use retreat point
+        var endZoneStart = Math.floor(masterQs.length * 0.8);
+        var inEndZone = currentIndex >= endZoneStart;
+
+        // If in end zone and have a retreat point, consider using it
+        if (inEndZone && retreatPoint && currentIndex >= retreatPoint.source - 4) {
+            // Force a retreat when we're very close to or past the retreat source point
+            if (currentIndex >= retreatPoint.source || beatsUntilJump <= 2) {
+                console.log('[advanceIndex] Using retreat point:', currentIndex, '→', retreatPoint.target);
+                loopHistory.push({ source: currentIndex, target: retreatPoint.target });
+                if (loopHistory.length > LOOP_HISTORY_LIMIT) {
+                    loopHistory.shift();
+                }
+                currentIndex = retreatPoint.target;
+                scheduleNextJump(false);
+                return;
+            }
+        }
+
         beatsUntilJump -= 1;
         if (beatsUntilJump <= 0) {
             var jump = selectJumpCandidate(currentIndex);
             if (jump) {
+                // In end zone, prefer jumps that go back to the beginning
+                if (inEndZone && jump.target >= endZoneStart) {
+                    // This jump stays in the end zone - use retreat instead if available
+                    if (retreatPoint) {
+                        console.log('[advanceIndex] End zone loop detected, forcing retreat:', currentIndex, '→', retreatPoint.target);
+                        currentIndex = retreatPoint.target;
+                        scheduleNextJump(false);
+                        return;
+                    }
+                }
+
                 loopHistory.push({ source: currentIndex, target: jump.target });
                 if (loopHistory.length > LOOP_HISTORY_LIMIT) {
                     loopHistory.shift();
@@ -3068,6 +3272,7 @@ function createJukeboxDriver(player, options) {
         }
         var q = masterQs[currentIndex];
         recordSectionVisit(q.section);
+        incrementBeatCount();
         var delay = player.playQ(q);
         q.tile.highlight();
         if (q.other && q.other.tile) {
@@ -3088,7 +3293,9 @@ function createJukeboxDriver(player, options) {
             resetTileColors(masterQs);
             currentIndex = 0;
             rebuildLoopChoices();
+            resetStats();
             running = true;
+            startStatsTracking();
             process();
             setURL();
             $("#play").text("Stop");
@@ -3100,6 +3307,7 @@ function createJukeboxDriver(player, options) {
             resetTileColors(masterQs);
             rebuildLoopChoices();
             running = true;
+            startStatsTracking();
             process();
             setURL();
             $("#play").text("Stop");

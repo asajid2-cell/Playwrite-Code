@@ -97,6 +97,16 @@
                                 Autocanonizer
                             {% endif %}
                         </span>
+                        <div class="viz-stats" id="eternal-stats" style="display: none;">
+                            <span class="viz-stat-item">
+                                <span class="viz-stat-label">Listen Time:</span>
+                                <span class="viz-stat-value" id="listen-time">00:00</span>
+                            </span>
+                            <span class="viz-stat-item">
+                                <span class="viz-stat-label">Beats Played:</span>
+                                <span class="viz-stat-value" id="beats-played">0</span>
+                            </span>
+                        </div>
                         <button type="button" id="advanced-toggle" class="viz-button ghost advanced-toggle-button" aria-pressed="false">
                             Advanced: Off
                         </button>
@@ -429,6 +439,7 @@
                 headerTitle.textContent = sectionConfig.label;
                 sectionHeader.appendChild(headerTitle);
 
+                // Section summary removed for cleaner UI
                 if (sectionConfig.summary) {
                     const summaryNode = document.createElement('p');
                     summaryNode.className = 'advanced-section-summary';
@@ -451,6 +462,7 @@
                     const groupHeader = document.createElement('div');
                     groupHeader.className = 'advanced-group-header';
 
+                    // Group title removed for cleaner UI
                     const titleNode = document.createElement('h5');
                     titleNode.className = 'advanced-group-title';
                     titleNode.textContent = meta.title;
@@ -484,6 +496,7 @@
                     bodyWrapper.className = 'advanced-group-body';
                     groupNode.appendChild(bodyWrapper);
 
+                    // Group description removed for cleaner UI
                     if (meta.description) {
                         const descriptionNode = document.createElement('p');
                         descriptionNode.className = 'advanced-group-description';

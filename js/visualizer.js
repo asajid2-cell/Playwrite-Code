@@ -3195,9 +3195,17 @@ function createJukeboxDriver(player, options) {
 
 function Driver(player) {
     if (mode === "jukebox") {
-        return createJukeboxDriver(player, getLoopSettingsForMode("jukebox"));
+        return createJukeboxDriver(player, {
+            modeName: "jukebox",
+            minLoopBeats: 12,
+            loopThreshold: 0.55
+        });
     } else if (mode === "eternal") {
-        return createJukeboxDriver(player, getLoopSettingsForMode("eternal"));
+        return createJukeboxDriver(player, {
+            modeName: "eternal",
+            minLoopBeats: 8,
+            loopThreshold: 0.5
+        });
     }
     return createCanonDriver(player);
 }

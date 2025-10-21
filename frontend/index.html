@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Harmonizer Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./modern.css">
+    <link rel="stylesheet" href="./visualizer.css">
+</head>
+<body class="page state-home advanced-collapsed" data-mode="canon">
+    <div class="music-field" aria-hidden="true">
+        <div class="music track one"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="music track two"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="music track three"><span></span><span></span><span></span><span></span><span></span></div>
+    </div>
+
+    <div class="page-shell">
+        <a href="/" class="back-button hidden" id="back-button" aria-label="Back to song select"><span aria-hidden="true">&#8592;</span><span class="back-button-label">Back</span></a>
+        <header class="hero">
+            <div class="hero-meta">
+                <div class="badge">Harmonizer Lab</div>
+                <h1>Canonize any track</h1>
+                <p>Upload audio or paste a link, then shape the canon live.</p>
+            </div>
+        </header>
+
+        <main class="layout">
+            <section class="panel intake-panel" id="intake-panel">
+                <h2>Load A Track</h2>
+                <form id="process-form" enctype="multipart/form-data" novalidate>
+                    <div class="section-title">Engine</div>
+                    <div class="toggle-group" id="algorithm-toggle">
+                        <button type="button" data-algorithm="canon" class="toggle active">Autocanonizer</button>
+                        <button type="button" data-algorithm="jukebox" class="toggle">Eternal Jukebox</button>
+                        <button type="button" data-algorithm="eternal" class="toggle">Eternal Canonizer</button>
+                    </div>
+                    <input type="hidden" name="algorithm" value="canon" id="algorithm-input">
+
+                    <div class="section-title">Source</div>
+                    <div class="toggle-group" id="source-toggle">
+                        <button type="button" data-source="upload" class="toggle active">Upload Audio</button>
+                        <button type="button" data-source="youtube" class="toggle">YouTube</button>
+                    </div>
+                    <input type="hidden" name="source" value="upload" id="source-input">
+
+                    <div class="source-pane" id="upload-pane">
+                        <label class="field">
+                            <span>Audio file</span>
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="audio" accept="audio/*" id="audio-file-input" class="file-input-hidden">
+                                <button type="button" class="file-upload-button" id="file-upload-button">
+                                    Choose File
+                                </button>
+                                <span class="file-upload-name" id="file-upload-name">No file chosen</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="source-pane hidden" id="youtube-pane">
+                        <label class="field">
+                            <span>YouTube link</span>
+                            <input type="url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=...">
+                        </label>
+                    </div>
+
+                    <div class="metadata-grid">
+                        <label class="field">
+                            <span>Title <small>(optional)</small></span>
+                            <input type="text" name="title" placeholder="Auto-detected when possible">
+                        </label>
+                        <label class="field">
+                            <span>Artist <small>(optional)</small></span>
+                            <input type="text" name="artist" placeholder="Auto-detected when possible">
+                        </label>
+                    </div>
+
+                    <button type="submit" class="cta">Transform Track</button>
+                </form>
+                <div id="form-status" class="status-panel" role="status" aria-live="polite"></div>
+            </section>
+
+            <section class="panel viz-panel music-frame" id="viz-panel">
+                <header class="viz-header">
+                    <div class="viz-headline">
+                        <h2 id="info"></h2>
+                    </div>
+                    <div class="viz-actions">
+                        <button id="play" class="viz-button">Play</button>
+                        <span class="viz-timer" id="mtime">00:00:00</span>
+                        <span class="viz-mode-pill" id="mode-pill">Autocanonizer</span>
+                        <div class="viz-stats" id="eternal-stats" style="display: none;">
+                            <span class="viz-stat-item">
+                                <span class="viz-stat-label">Listen Time:</span>
+                                <span class="viz-stat-value" id="listen-time">00:00</span>
+                            </span>
+                            <span class="viz-stat-item">
+                                <span class="viz-stat-label">Beats Played:</span>
+                                <span class="viz-stat-value" id="beats-played">0</span>
+                            </span>
+                        </div>
+                        <button type="button" id="advanced-toggle" class="viz-button ghost advanced-toggle-button" aria-pressed="false">
+                            Advanced: Off
+                        </button>
+                        <button type="button" id="add-to-queue-btn" class="viz-button ghost">
+                            + Add to Queue
+                        </button>
+                    </div>
+            </header>
+            <div class="viz-body">
+                <div class="viz-stage">
+                    <div class="viz-status" id="status-panel"></div>
+                    <div id="error"></div>
+                    <div id="tiles" class="tiles-canvas"></div>
+                    <div id="queue-container" class="queue-container" style="display: none;">
+                        <div class="queue-header">
+                            <h4>Queue</h4>
+                            <button type="button" id="clear-queue-btn" class="viz-button ghost small">Clear All</button>
+                        </div>
+                        <div id="queue-list" class="queue-list"></div>
+                    </div>
+
+                    <!-- Footer with random text -->
+                    <footer class="viz-footer" id="footer-text">
+                        drive safe i fucking love you &lt;3
+                    </footer>
+                </div>
+
+                <aside class="viz-sidebar hidden" id="advanced-sidebar">
+                    <div class="advanced-shell" id="advanced-shell">
+                        <header class="advanced-header">
+                            <h3>Advanced Settings</h3>
+                            <p>Fine-tune how each engine behaves. Changes apply immediately.</p>
+                        </header>
+                        <div class="advanced-sections" id="advanced-sections"></div>
+                    </div>
+                </aside>
+            </div>
+            </section>
+            </main>
+            </div>
+
+            <!-- ✅ Script to randomize the footer message -->
+            <script>
+                const messages = [
+                    "drive safe i fucking love you <3",
+                    "text me when you get home <3",
+                    "made for you, by you <3",
+                    "you’re doing amazing, keep going <3",
+                    "i’m proud of you, always <3",
+                    " i do bad all by myself :p",
+                    " you are enough, just as you are <3",
+                    "every day is all there is <3",
+                    "ill wait for you tomorrow <3",
+                    "she said do u love me i tell her only partly :p",
+                    "i cant keep my hands to myself :p",
+                    "you make me wanna die less :p",
+                    " stay hydrated <3",
+                    " to your eternity <3",
+                    " believe in miracles <3",
+                    " you are my sunshine <3",
+                    "u make my day less grey :o",
+                    "passionate from miles away :o",
+                    "were just some soul with good intentions :p",
+                    "who do you think you are? i am :b",
+                    "im sure we're taller in another dimension <3",
+
+                ];
+
+                // Pick a random message
+                const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+
+                // Replace the footer text
+                document.getElementById("footer-text").innerHTML = randomMessage;
+            </script>
+
+
+    <!-- Add to Queue Modal -->
+    <div id="queue-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add to Queue</h3>
+                <button type="button" class="modal-close" id="queue-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Enter a YouTube URL or playlist to add to the queue:</p>
+                <input type="text" id="queue-url-input" class="queue-input" placeholder="https://youtube.com/watch?v=..." />
+                <div id="queue-modal-status" class="queue-modal-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="viz-button ghost" id="queue-modal-cancel">Cancel</button>
+                <button type="button" class="viz-button" id="queue-modal-submit">Add to Queue</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.13.3/jquery-ui.min.js"></script>
+    <script src="./app-config.js"></script>
+    <script src="./js/underscore-min.js"></script>
+    <script src="./js/raphael-min.js"></script>
+    <script src="./jremix.js"></script>
+    <script src="./js/visualizer.js"></script>
+    <script>
+    (function() {
+        const body = document.body;
+        const vizPanelElement = document.getElementById('viz-panel');
+        const algorithmToggle = document.getElementById('algorithm-toggle');
+        const sourceToggle = document.getElementById('source-toggle');
+        const algorithmInput = document.getElementById('algorithm-input');
+        const sourceInput = document.getElementById('source-input');
+        const uploadPane = document.getElementById('upload-pane');
+        const youtubePane = document.getElementById('youtube-pane');
+        const modePill = document.getElementById('mode-pill');
+        const config = window.HARMONIZER_CONFIG || {};
+        const apiBaseUrl = (config.apiBaseUrl || "").replace(/\/+$/, "");
+        const buildApiUrl = (path) => {
+            if (!path.startsWith('/')) {
+                path = '/' + path;
+            }
+            return apiBaseUrl ? `${apiBaseUrl}${path}` : path;
+        };
+        const MODE_LABELS = {
+            canon: 'Autocanonizer',
+            jukebox: 'Eternal Jukebox',
+            eternal: 'Eternal Canonizer',
+        };
+        const buildFrontendRedirect = (trackId, mode) => {
+            const params = new URLSearchParams();
+            if (trackId) {
+                params.set('trid', trackId);
+            }
+            if (mode) {
+                params.set('mode', mode);
+            }
+            let basePath = window.location.pathname || '/';
+            if (basePath.endsWith('index.html')) {
+                basePath = basePath.slice(0, -'index.html'.length);
+            }
+            if (!basePath.endsWith('/')) {
+                basePath += '/';
+            }
+            const suffix = params.toString();
+            return suffix ? `${basePath}?${suffix}` : basePath;
+        };
+
+        const form = document.getElementById('process-form');
+        const statusPanel = document.getElementById('form-status');
+        const modeFromBody = (body.dataset.mode || "canon").toLowerCase();
+        let currentModeKey = modeFromBody;
+
+        const setState = (state) => {
+            body.classList.remove('state-home', 'state-player');
+            body.classList.add(state);
+            if (state === 'state-home' && vizPanelElement) {
+                vizPanelElement.style.left = '';
+                vizPanelElement.style.top = '';
+                vizPanelElement.style.width = '';
+                vizPanelElement.style.height = '';
+            }
+        };
+
+        const backButton = document.getElementById('back-button');
+        const params = new URLSearchParams(window.location.search);
+        const tridParam = params.get('trid');
+        const requestedMode = (params.get('mode') || 'canon').toLowerCase();
+        const allowedModes = new Set(['canon', 'jukebox', 'eternal']);
+        const normalizedMode = allowedModes.has(requestedMode) ? requestedMode : 'canon';
+        document.body.dataset.mode = normalizedMode;
+        if (modePill) {
+            modePill.textContent = MODE_LABELS[normalizedMode] || MODE_LABELS.canon;
+        }
+
+        if (tridParam) {
+            setState('state-player');
+            if (backButton) {
+                backButton.classList.remove('hidden');
+                backButton.setAttribute('href', window.location.pathname + window.location.search.replace(/([?&])trid=[^&]*/g, '').replace(/^&/, '?'));
+            }
+        } else {
+            if (backButton) { backButton.classList.add('hidden'); }
+            setState('state-home');
+        }
+
+        function syncAlgorithmButtons(targetMode) {
+            targetMode = (targetMode || 'canon').toLowerCase();
+            algorithmToggle.querySelectorAll('.toggle').forEach(btn => btn.classList.remove('active'));
+            const match = algorithmToggle.querySelector('[data-algorithm\"' + targetMode + '\"]');
+            if (match) {
+                match.classList.add('active');
+            }
+            algorithmInput.value = targetMode;
+            body.dataset.mode = targetMode;
+            if (modePill) {
+                modePill.textContent = MODE_LABELS[targetMode] || MODE_LABELS.canon;
+            }
+            return targetMode;
+        }
+
+        if (modeFromBody === "jukebox" || modeFromBody === "eternal" || modeFromBody === "canon") {
+            currentModeKey = syncAlgorithmButtons(modeFromBody);
+        }
+
+        algorithmToggle.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-algorithm]');
+            if (!button) {
+                return;
+            }
+            const targetMode = button.dataset.algorithm;
+            currentModeKey = syncAlgorithmButtons(targetMode);
+            window.setAdvancedPanelMode(currentModeKey);
+        });
+
+        sourceToggle.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-source]');
+            if (!button) {
+                return;
+            }
+            sourceToggle.querySelectorAll('.toggle').forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            const source = button.dataset.source;
+            sourceInput.value = source;
+            if (source === 'upload') {
+                uploadPane.classList.remove('hidden');
+                youtubePane.classList.add('hidden');
+            } else {
+                youtubePane.classList.remove('hidden');
+                uploadPane.classList.add('hidden');
+            }
+        });
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            statusPanel.textContent = '';
+            const source = sourceInput.value;
+            if (source === 'upload') {
+                const fileInput = form.querySelector('input[name="audio"]');
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    statusPanel.textContent = 'Please choose an audio file to upload.';
+                    return;
+                }
+            } else {
+                const urlField = form.querySelector('input[name="youtube_url"]');
+                if (!urlField.value) {
+                    statusPanel.textContent = 'Please paste a YouTube link.';
+                    return;
+                }
+
+                // Check if it's a playlist URL
+                const url = urlField.value.trim();
+                if (url.includes('list=') || url.includes('playlist')) {
+                    try {
+                        statusPanel.textContent = 'Checking for playlist...';
+                        const playlistResponse = await fetch(buildApiUrl('api/playlist-info'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: url })
+                        });
+                        const playlistData = await playlistResponse.json();
+
+                        if (playlistData.is_playlist && playlistData.entries && playlistData.entries.length > 0) {
+                            statusPanel.textContent = `Found playlist with ${playlistData.entries.length} tracks. Processing all...`;
+                            await processPlaylist(playlistData.entries, form);
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('Playlist check failed:', err);
+                        // Continue with single track processing
+                    }
+                }
+            }
+
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Processing...';
+            statusPanel.textContent = 'Analyzing audio... this can take a minute.';
+
+            try {
+                const formData = new FormData(form);
+                const selectedAlgorithm = (formData.get('algorithm') || 'canon').toString().toLowerCase();
+                const response = await fetch(buildApiUrl('api/process'), {
+                    method: 'POST',
+                    body: formData
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || 'Something went wrong.');
+                }
+                if (!payload.trackId) {
+                    throw new Error('Unexpected response from server.');
+                }
+                statusPanel.textContent = 'Ready! Loading the visualizer...';
+                window.location.href = buildFrontendRedirect(payload.trackId, selectedAlgorithm);
+            } catch (err) {
+                statusPanel.textContent = err.message;
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Transform Track';
+            }
+        });
+
+        async function processPlaylist(entries, form) {
+            const submitButton = form.querySelector('button[type="submit"]');
+            const algorithm = (form.querySelector('input[name="algorithm"]').value || 'canon').toLowerCase();
+            submitButton.disabled = true;
+
+            const trackIds = [];
+            const trackInfo = [];
+
+            for (let i = 0; i < entries.length; i++) {
+                try {
+                    statusPanel.textContent = `Processing track ${i + 1}/${entries.length}: ${entries[i].title}`;
+
+                    const formData = new FormData();
+                    formData.append('source', 'youtube');
+                    formData.append('youtube_url', entries[i].url);
+                    formData.append('algorithm', algorithm);
+
+                    const response = await fetch(buildApiUrl('api/process'), {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const payload = await response.json();
+                    if (response.ok && payload.trackId) {
+                        trackIds.push(payload.trackId);
+                        trackInfo.push({
+                            id: payload.trackId,
+                            title: entries[i].title,
+                            artist: 'YouTube'
+                        });
+                    } else {
+                        console.error(`Failed to process ${entries[i].title}:`, payload.error);
+                    }
+                } catch (err) {
+                    console.error(`Error processing ${entries[i].title}:`, err);
+                }
+            }
+
+            if (trackIds.length > 0) {
+                // Store queue in sessionStorage to load in visualizer
+                sessionStorage.setItem('playlistQueue', JSON.stringify(trackInfo));
+                statusPanel.textContent = `Successfully processed ${trackIds.length} tracks! Loading visualizer...`;
+
+                // Navigate to first track with the queue
+                const mode = algorithm || 'canon';
+                window.location.href = buildFrontendRedirect(trackIds[0], mode);
+            } else {
+                statusPanel.textContent = 'Failed to process any tracks from the playlist.';
+                submitButton.disabled = false;
+                submitButton.textContent = 'Transform Track';
+            }
+        }
+
+        const advancedToggleButton = document.getElementById('advanced-toggle');
+        const advancedSidebar = document.getElementById('advanced-sidebar');
+        const advancedShell = document.getElementById('advanced-shell');
+        const advancedSectionsRoot = document.getElementById('advanced-sections');
+
+        body.classList.add('advanced-collapsed');
+
+        let advancedSidebarVisible = false;
+
+        function updateAdvancedToggleState() {
+            if (!advancedToggleButton) {
+                return;
+            }
+            advancedToggleButton.setAttribute('aria-pressed', advancedSidebarVisible ? 'true' : 'false');
+            advancedToggleButton.classList.toggle('active', advancedSidebarVisible);
+            advancedToggleButton.textContent = advancedSidebarVisible ? 'Advanced: On' : 'Advanced: Off';
+        }
+
+        if (advancedSidebar) {
+            advancedSidebar.classList.add('hidden');
+            advancedSidebar.setAttribute('aria-hidden', 'true');
+        }
+
+        function showAdvancedSidebar() {
+            if (!advancedSidebarVisible || !advancedSidebar) {
+                return;
+            }
+            advancedSidebar.classList.remove('hidden');
+            advancedSidebar.removeAttribute('aria-hidden');
+        }
+
+        function syncAdvancedUiForMode(modeKey) {
+            if (!advancedSidebarVisible) {
+                return;
+            }
+            const normalized = (modeKey || currentModeKey || 'canon').toLowerCase();
+            currentModeKey = normalized;
+            primeGroupLayoutForMode(currentModeKey);
+            showAdvancedSidebar();
+        }
+
+        window.setCanonUiVisibility = (visible) => {
+            if (visible && advancedSidebarVisible) {
+                window.setAdvancedPanelMode('canon');
+            }
+        };
+
+        window.setAdvancedPanelMode = (modeKey) => {
+            const normalized = (modeKey || currentModeKey || 'canon').toLowerCase();
+            currentModeKey = normalized;
+            pendingAdvancedMode = normalized;
+            if (!advancedSidebarVisible) {
+                return;
+            }
+            ensureAdvancedUi();
+            ensureModeDefaults(currentModeKey);
+            syncAdvancedSectionsForMode(currentModeKey);
+            syncAdvancedUiForMode(currentModeKey);
+        };
+
+        const ADVANCED_GROUP_METADATA = {
+            canonOverlay: {
+                title: 'Overlay Behaviour',
+                description: 'Set spacing, dwell, and texture for the live Autocanonizer voices.',
+                fields: [
+                    { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation between overlay voices.' },
+                    { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest allowed beat offset between overlay voices.' },
+                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats to stay on a pairing before retargeting.' },
+                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add more simultaneous overlay voices.' },
+                    { key: 'variation', label: 'Variation', min: 0, max: 10, step: 1, format: (v) => `${v}`, description: 'Controls how adventurous the overlay can be when rewiring connections.' }
+                ]
+            },
+            jukeboxLoop: {
+                title: 'Loop Pathing',
+                description: 'Dial in how Eternal Jukebox picks loops and when it moves on.',
+                fields: [
+                    { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest loop allowed when picking jump targets.' },
+                    { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats to play before forcing a jump.' },
+                    { key: 'loopThreshold', label: 'Similarity Threshold', min: 0.3, max: 0.95, step: 0.01, format: (v) => `${Math.round(v * 100)}%`, description: 'Higher values require closer similarity before a loop is accepted.' },
+                    { key: 'sectionBias', label: 'Section Bias', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}% in-section`, description: 'Preference for staying within the same section when looping.' },
+                    { key: 'jumpVariance', label: 'Jump Variance', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%`, description: 'Higher values encourage varied jump timing; lower values keep loops tighter.' }
+                ]
+            },
+            eternalOverlay: {
+                title: 'Overlay Behaviour',
+                description: 'Shape the multivoice overlay used in Eternal Canonizer mode.',
+                fields: [
+                    { key: 'minOffsetBeats', label: 'Minimum Offset', min: 1, max: 96, step: 1, format: (v) => `${v} beats`, description: 'Earliest beat separation for overlay voices.' },
+                    { key: 'maxOffsetBeats', label: 'Maximum Offset', min: 2, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Largest beat separation for overlay voices.' },
+                    { key: 'dwellBeats', label: 'Dwell', min: 1, max: 16, step: 1, format: (v) => `${v} beats`, description: 'Minimum beats before switching overlay targets.' },
+                    { key: 'density', label: 'Density', min: 1, max: 6, step: 1, format: (v) => `${v}/6`, description: 'Higher values add thicker overlays.' },
+                    { key: 'variation', label: 'Variation', min: 0, max: 10, step: 1, format: (v) => `${v}`, description: 'Controls how much the overlay may deviate from its base pattern.' }
+                ]
+            },
+            eternalLoop: {
+                title: 'Loop Pathing',
+                description: 'Control loop behaviour when running the Eternal Canonizer.',
+                fields: [
+                    { key: 'minLoopBeats', label: 'Minimum Loop Length', min: 4, max: 64, step: 1, format: (v) => `${v} beats`, description: 'Shortest allowed loop when chaining canon segments.' },
+                    { key: 'maxSequentialBeats', label: 'Sequential Ceiling', min: 8, max: 128, step: 1, format: (v) => `${v} beats`, description: 'Maximum beats before forcing a jump to another segment.' },
+                    { key: 'loopThreshold', label: 'Similarity Threshold', min: 0.3, max: 0.95, step: 0.01, format: (v) => `${Math.round(v * 100)}%`, description: 'Higher values require stronger similarity before loops are used.' },
+                    { key: 'sectionBias', label: 'Section Bias', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}% in-section`, description: 'Controls how strongly the canon prefers staying within a section when looping.' },
+                    { key: 'jumpVariance', label: 'Jump Variance', min: 0, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%`, description: 'Influences how surprising the loop timing can be.' }
+                ]
+            }
+        };
+
+        const ADVANCED_SECTION_LAYOUT = [
+            {
+                id: 'canon',
+                label: 'Autocanonizer',
+                summary: 'Control how the live canon overlay weaves through the track.',
+                groups: ['canonOverlay']
+            },
+            {
+                id: 'jukebox',
+                label: 'Eternal Jukebox',
+                summary: 'Shape how the jukebox chooses and times its infinite loops.',
+                groups: ['jukeboxLoop']
+            },
+            {
+                id: 'eternal',
+                label: 'Eternal Canonizer',
+                summary: 'Balance overlay density with the looping engine for long-form canons.',
+                groups: ['eternalOverlay', 'eternalLoop']
+            }
+        ];
+
+        const MODE_TO_SECTION_IDS = {
+            canon: ['canon'],
+            jukebox: ['jukebox'],
+            eternal: ['eternal']
+        };
+
+        const advancedDomMap = Object.create(null);
+        const advancedSectionNodes = Object.create(null);
+        let advancedUiReady = false;
+        let pendingAdvancedMode = currentModeKey;
+
+        const MODE_PRIMARY_GROUPS = {
+            canon: ['canonOverlay'],
+            jukebox: ['jukeboxLoop'],
+            eternal: ['eternalOverlay', 'eternalLoop']
+        };
+
+        function buildAdvancedUi() {
+            if (!advancedSidebar || !advancedShell || !advancedSectionsRoot) {
+                return;
+            }
+            if (typeof window.getAdvancedSettings !== 'function' || typeof window.updateAdvancedGroupSetting !== 'function') {
+                return;
+            }
+
+            advancedSectionsRoot.innerHTML = '';
+            Object.keys(advancedDomMap).forEach((key) => { delete advancedDomMap[key]; });
+            Object.keys(advancedSectionNodes).forEach((key) => { delete advancedSectionNodes[key]; });
+
+            ADVANCED_SECTION_LAYOUT.forEach((sectionConfig) => {
+                const sectionNode = document.createElement('section');
+                sectionNode.className = 'advanced-section';
+                sectionNode.dataset.sectionMode = sectionConfig.id;
+
+                const sectionHeader = document.createElement('header');
+                sectionHeader.className = 'advanced-section-header';
+
+                const headerTitle = document.createElement('h4');
+                headerTitle.textContent = sectionConfig.label;
+                sectionHeader.appendChild(headerTitle);
+
+                // Section summary removed for cleaner UI
+                if (sectionConfig.summary) {
+                    const summaryNode = document.createElement('p');
+                    summaryNode.className = 'advanced-section-summary';
+                    summaryNode.textContent = sectionConfig.summary;
+                    sectionHeader.appendChild(summaryNode);
+                }
+
+                sectionNode.appendChild(sectionHeader);
+
+                sectionConfig.groups.forEach((groupKey) => {
+                    const meta = ADVANCED_GROUP_METADATA[groupKey];
+                    if (!meta) {
+                        return;
+                    }
+
+                    const groupNode = document.createElement('article');
+                    groupNode.className = 'advanced-group';
+                    groupNode.dataset.groupKey = groupKey;
+
+                    const groupHeader = document.createElement('div');
+                    groupHeader.className = 'advanced-group-header';
+
+                    // Group title removed for cleaner UI
+                    const titleNode = document.createElement('h5');
+                    titleNode.className = 'advanced-group-title';
+                    titleNode.textContent = meta.title;
+                    groupHeader.appendChild(titleNode);
+
+                    const collapseButton = document.createElement('button');
+                    collapseButton.type = 'button';
+                    collapseButton.className = 'advanced-collapse-btn';
+                    collapseButton.setAttribute('aria-label', `Toggle ${meta.title} settings`);
+                    collapseButton.setAttribute('aria-expanded', 'false');
+                    collapseButton.innerHTML = '<span class="chevron"></span>';
+
+                    const toggleLabel = document.createElement('label');
+                    toggleLabel.className = 'advanced-group-toggle';
+
+                    const toggle = document.createElement('input');
+                    toggle.type = 'checkbox';
+                    toggle.dataset.groupKey = groupKey;
+                    toggle.id = `advanced-toggle-${groupKey}`;
+                    toggleLabel.appendChild(toggle);
+
+                    const toggleText = document.createElement('span');
+                    toggleText.textContent = 'Enable custom settings';
+                    toggleLabel.appendChild(toggleText);
+
+                    groupHeader.appendChild(toggleLabel);
+                    groupHeader.appendChild(collapseButton);
+                    groupNode.appendChild(groupHeader);
+
+                    const bodyWrapper = document.createElement('div');
+                    bodyWrapper.className = 'advanced-group-body';
+                    groupNode.appendChild(bodyWrapper);
+
+                    // Group description removed for cleaner UI
+                    if (meta.description) {
+                        const descriptionNode = document.createElement('p');
+                        descriptionNode.className = 'advanced-group-description';
+                        descriptionNode.textContent = meta.description;
+                        bodyWrapper.appendChild(descriptionNode);
+                    }
+
+                    const fieldsContainer = document.createElement('div');
+                    fieldsContainer.className = 'advanced-fields';
+                    bodyWrapper.appendChild(fieldsContainer);
+
+                    const inputs = Object.create(null);
+                    const valueLabels = Object.create(null);
+                    const fieldMeta = Object.create(null);
+
+                    meta.fields.forEach((field) => {
+                        const control = document.createElement('div');
+                        control.className = 'advanced-control';
+
+                        const topLine = document.createElement('div');
+                        topLine.className = 'advanced-control-topline';
+
+                        const labelNode = document.createElement('label');
+                        labelNode.className = 'advanced-control-label';
+                        labelNode.htmlFor = `advanced-${groupKey}-${field.key}`;
+                        labelNode.textContent = field.label;
+                        topLine.appendChild(labelNode);
+
+                        const valueNode = document.createElement('span');
+                        valueNode.className = 'advanced-control-value';
+                        topLine.appendChild(valueNode);
+
+                        control.appendChild(topLine);
+
+                        const input = document.createElement('input');
+                        input.type = 'range';
+                        input.min = field.min;
+                        input.max = field.max;
+                        if (field.step !== undefined) {
+                            input.step = field.step;
+                        } else if (field.max - field.min <= 1) {
+                            input.step = 0.01;
+                        }
+                        input.id = `advanced-${groupKey}-${field.key}`;
+                        input.dataset.groupKey = groupKey;
+                        input.dataset.fieldKey = field.key;
+
+                        control.appendChild(input);
+
+                        if (field.description) {
+                            const hint = document.createElement('p');
+                            hint.className = 'advanced-control-hint';
+                            hint.textContent = field.description;
+                            control.appendChild(hint);
+                        }
+
+                        fieldsContainer.appendChild(control);
+
+                        inputs[field.key] = input;
+                        valueLabels[field.key] = valueNode;
+                        fieldMeta[field.key] = field;
+
+                        input.addEventListener('input', handleAdvancedFieldInput);
+                        input.addEventListener('change', handleAdvancedFieldCommit);
+                    });
+
+                    const resetButton = document.createElement('button');
+                    resetButton.type = 'button';
+                    resetButton.className = 'viz-button ghost advanced-reset-button';
+                    resetButton.dataset.groupKey = groupKey;
+                    resetButton.textContent = 'Reset to defaults';
+                    resetButton.addEventListener('click', handleAdvancedReset);
+                    bodyWrapper.appendChild(resetButton);
+
+                    toggle.addEventListener('change', handleAdvancedToggle);
+
+                    advancedDomMap[groupKey] = {
+                        groupNode,
+                        toggle,
+                        body: bodyWrapper,
+                        collapseButton,
+                        inputs,
+                        valueLabels,
+                        fieldMeta,
+                        resetButton,
+                        fieldsContainer
+                    };
+
+                    collapseButton.addEventListener('click', () => {
+                        const dom = advancedDomMap[groupKey];
+                        if (!dom) {
+                            return;
+                        }
+                        const collapsed = dom.groupNode.classList.contains('is-collapsed');
+                        setGroupCollapsed(groupKey, !collapsed);
+                    });
+
+                    sectionNode.appendChild(groupNode);
+                    setGroupCollapsed(groupKey, true);
+                });
+
+                advancedSectionsRoot.appendChild(sectionNode);
+                advancedSectionNodes[sectionConfig.id] = sectionNode;
+            });
+
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                syncGroupFromState(groupKey);
+            });
+
+            advancedUiReady = true;
+            window.setAdvancedPanelMode(pendingAdvancedMode);
+        }
+
+        function ensureAdvancedUi() {
+            if (advancedUiReady) {
+                return;
+            }
+            buildAdvancedUi();
+        }
+
+        function disableAllAdvancedGroups() {
+            if (!advancedUiReady) {
+                return;
+            }
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                if (isGroupEnabled(groupKey)) {
+                    setGroupEnabled(groupKey, false);
+                }
+                setGroupInputsDisabled(groupKey, true);
+                setGroupCollapsed(groupKey, true);
+                const dom = advancedDomMap[groupKey];
+                if (dom && dom.toggle) {
+                    dom.toggle.checked = false;
+                }
+            });
+        }
+
+        function resetAllGroupsToDefaults() {
+            if (!advancedUiReady) {
+                return;
+            }
+            console.log('[Advanced Settings] Resetting all groups to defaults');
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                if (typeof window.resetAdvancedGroup === 'function') {
+                    window.resetAdvancedGroup(groupKey);
+                }
+                if (typeof window.applyAdvancedGroup === 'function') {
+                    window.applyAdvancedGroup(groupKey, { source: 'reset' });
+                }
+            });
+        }
+
+        function setAdvancedVisibility(enabled) {
+            const normalized = !!enabled;
+            if (normalized === advancedSidebarVisible) {
+                updateAdvancedToggleState();
+                return;
+            }
+            advancedSidebarVisible = normalized;
+            body.classList.toggle('advanced-expanded', normalized);
+            body.classList.toggle('advanced-collapsed', !normalized);
+            updateAdvancedToggleState();
+            if (normalized) {
+                ensureAdvancedUi();
+                ensureModeDefaults(currentModeKey);
+                showAdvancedSidebar();
+                window.setAdvancedPanelMode(currentModeKey);
+            } else if (advancedSidebar) {
+                resetAllGroupsToDefaults();
+                disableAllAdvancedGroups();
+                advancedSidebar.classList.add('hidden');
+                advancedSidebar.setAttribute('aria-hidden', 'true');
+            }
+        }
+
+        function handleAdvancedToggle(event) {
+            const checkbox = event.currentTarget;
+            const groupKey = checkbox && checkbox.dataset ? checkbox.dataset.groupKey : null;
+            if (!groupKey) {
+                return;
+            }
+            const enabled = checkbox.checked;
+            setGroupEnabled(groupKey, enabled);
+            setGroupInputsDisabled(groupKey, !enabled);
+            syncGroupFromState(groupKey);
+            if (enabled) {
+                setGroupCollapsed(groupKey, false);
+                forceAdvancedApply(groupKey, null, null, 'toggle');
+            } else {
+                setGroupCollapsed(groupKey, true);
+            }
+        }
+
+        function forceAdvancedApply(groupKey, fieldKey, value, sourceTag) {
+            const source = sourceTag || 'ui';
+            if (typeof window.setAdvancedGroupEnabled === 'function') {
+                window.setAdvancedGroupEnabled(groupKey, true);
+            }
+            if (typeof window.updateAdvancedGroupSetting === 'function' && fieldKey !== null && fieldKey !== undefined && value !== null && !Number.isNaN(value)) {
+                window.updateAdvancedGroupSetting(groupKey, fieldKey, value);
+            }
+            if (typeof window.applyImmediateAdvancedSetting === 'function' && fieldKey !== null && fieldKey !== undefined && value !== null && !Number.isNaN(value)) {
+                window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+            }
+            if (typeof window.applyAdvancedGroup === 'function') {
+                window.applyAdvancedGroup(groupKey, { source });
+            } else if (groupKey === 'canonOverlay' && typeof window.regenerateCanonMappingManually === 'function') {
+                window.regenerateCanonMappingManually();
+            } else if (groupKey === 'eternalOverlay' && typeof window.regenerateEternalOverlay === 'function') {
+                window.regenerateEternalOverlay({ source });
+            } else {
+                syncGroupFromState(groupKey);
+            }
+        }
+
+        function handleAdvancedFieldInput(event) {
+            const input = event.currentTarget;
+            const groupKey = input && input.dataset ? input.dataset.groupKey : null;
+            const fieldKey = input && input.dataset ? input.dataset.fieldKey : null;
+            if (!groupKey || !fieldKey) {
+                return;
+            }
+            const value = parseFloat(input.value);
+            if (Number.isNaN(value)) {
+                return;
+            }
+            updateValueLabel(groupKey, fieldKey, value);
+            enforceGroupConstraints(groupKey);
+            if (groupKey === 'canonOverlay') {
+                if (typeof window.setCanonAdvancedEnabled === 'function') {
+                    const isEnabled = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+                    if (!isEnabled) {
+                        window.setCanonAdvancedEnabled(true);
+                    }
+                }
+                if (typeof window.updateCanonSetting === 'function') {
+                    window.updateCanonSetting(fieldKey, value);
+                }
+                if (typeof window.applyImmediateAdvancedSetting === 'function') {
+                    window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+                }
+                syncGroupFromState(groupKey);
+                return;
+            }
+            forceAdvancedApply(groupKey, fieldKey, value, 'input');
+        }
+
+        function handleAdvancedFieldCommit(event) {
+            const input = event.currentTarget;
+            if (!input || !input.dataset) {
+                return;
+            }
+            const groupKey = input.dataset.groupKey;
+            const fieldKey = input.dataset.fieldKey;
+            if (!groupKey || !fieldKey) {
+                return;
+            }
+            const value = parseFloat(input.value);
+            if (Number.isNaN(value)) {
+                return;
+            }
+            updateValueLabel(groupKey, fieldKey, value);
+            enforceGroupConstraints(groupKey);
+            if (groupKey === 'canonOverlay') {
+                if (typeof window.setCanonAdvancedEnabled === 'function') {
+                    const isEnabled = typeof window.isCanonAdvancedEnabled === 'function' ? window.isCanonAdvancedEnabled() : false;
+                    if (!isEnabled) {
+                        window.setCanonAdvancedEnabled(true);
+                    }
+                }
+                if (typeof window.updateCanonSetting === 'function') {
+                    window.updateCanonSetting(fieldKey, value);
+                }
+                if (typeof window.applyImmediateAdvancedSetting === 'function') {
+                    window.applyImmediateAdvancedSetting(groupKey, fieldKey, value);
+                }
+                syncGroupFromState(groupKey);
+                return;
+            }
+            forceAdvancedApply(groupKey, fieldKey, value, event && event.type ? event.type : 'commit');
+        }
+
+        function handleAdvancedReset(event) {
+            const button = event.currentTarget;
+            const groupKey = button && button.dataset ? button.dataset.groupKey : null;
+            if (!groupKey || typeof window.resetAdvancedGroup !== 'function') {
+                return;
+            }
+            window.resetAdvancedGroup(groupKey);
+            syncGroupFromState(groupKey);
+            if (typeof window.applyAdvancedGroup !== 'function') {
+                return;
+            }
+            window.applyAdvancedGroup(groupKey, { source: 'reset' });
+        }
+
+        function setGroupEnabled(groupKey, enabled) {
+            if (!groupKey) {
+                return;
+            }
+            if (groupKey === 'canonOverlay' && typeof window.setCanonAdvancedEnabled === 'function') {
+                window.setCanonAdvancedEnabled(enabled);
+            } else if (groupKey === 'eternalOverlay' && typeof window.setEternalAdvancedEnabled === 'function') {
+                window.setEternalAdvancedEnabled(enabled);
+            } else if (typeof window.setAdvancedGroupEnabled === 'function') {
+                window.setAdvancedGroupEnabled(groupKey, enabled);
+            }
+        }
+
+        function isGroupEnabled(groupKey) {
+            if (groupKey === 'canonOverlay' && typeof window.isCanonAdvancedEnabled === 'function') {
+                return !!window.isCanonAdvancedEnabled();
+            }
+            if (groupKey === 'eternalOverlay' && typeof window.isEternalAdvancedEnabled === 'function') {
+                return !!window.isEternalAdvancedEnabled();
+            }
+            const state = getGroupState(groupKey);
+            return state ? !!state.enabled : false;
+        }
+
+        function getGroupState(groupKey) {
+            if (typeof window.getAdvancedSettings !== 'function') {
+                return null;
+            }
+            try {
+                return window.getAdvancedSettings(groupKey);
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function updateGroupToggleState(groupKey, enabled) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom || !dom.toggle) {
+                return;
+            }
+            dom.toggle.checked = !!enabled;
+            setGroupInputsDisabled(groupKey, !enabled);
+        }
+
+        function setGroupInputsDisabled(groupKey, disabled) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
+                return;
+            }
+            const disabledFlag = !!disabled && !advancedSidebarVisible;
+            Object.values(dom.inputs).forEach((input) => {
+                input.disabled = disabledFlag;
+            });
+            if (dom.resetButton) {
+                dom.resetButton.disabled = disabledFlag;
+            }
+            if (dom.groupNode) {
+                dom.groupNode.classList.toggle('is-disabled', disabledFlag);
+                dom.groupNode.setAttribute('aria-disabled', disabledFlag ? 'true' : 'false');
+            }
+        }
+
+    function setGroupCollapsed(groupKey, collapsed) {
+        const dom = advancedDomMap[groupKey];
+        if (!dom) {
+            return;
+        }
+        const collapseFlag = !!collapsed;
+        dom.groupNode.classList.toggle('is-collapsed', collapseFlag);
+        if (dom.body) {
+            dom.body.hidden = collapseFlag;
+        }
+        if (dom.collapseButton) {
+            dom.collapseButton.setAttribute('aria-expanded', collapseFlag ? 'false' : 'true');
+        }
+    }
+
+    function primeGroupLayoutForMode(modeKey) {
+        if (!advancedUiReady) {
+            return;
+        }
+        const normalized = (modeKey || '').toLowerCase();
+        let expandedGroups = [];
+        if (normalized === 'canon') {
+            expandedGroups = ['canonOverlay'];
+        } else if (normalized === 'jukebox') {
+            expandedGroups = ['jukeboxLoop'];
+        } else if (normalized === 'eternal') {
+            expandedGroups = ['eternalOverlay', 'eternalLoop'];
+        }
+        Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+            const shouldExpand = expandedGroups.includes(groupKey);
+            setGroupCollapsed(groupKey, !shouldExpand);
+        });
+    }
+
+        function ensureModeDefaults(modeKey) {
+            if (!advancedUiReady) {
+                return;
+            }
+            const normalized = (modeKey || '').toLowerCase();
+            const primaryGroups = MODE_PRIMARY_GROUPS[normalized] || [];
+            primaryGroups.forEach((groupKey, index) => {
+                if (!isGroupEnabled(groupKey)) {
+                    setGroupEnabled(groupKey, true);
+                }
+                const dom = advancedDomMap[groupKey];
+                if (dom) {
+                    if (dom.toggle) {
+                        dom.toggle.checked = true;
+                    }
+                    setGroupInputsDisabled(groupKey, false);
+                }
+                syncGroupFromState(groupKey);
+                if (index === 0) {
+                    setGroupCollapsed(groupKey, false);
+                }
+            });
+        }
+
+        function syncGroupFromState(groupKey) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
+                return;
+            }
+            const state = getGroupState(groupKey);
+            const defaults = state && state.defaults ? state.defaults : {};
+            const settings = state && state.settings ? state.settings : defaults;
+            const enabled = state ? !!state.enabled : false;
+            updateGroupToggleState(groupKey, enabled);
+            Object.entries(dom.inputs).forEach(([fieldKey, input]) => {
+                const nextValue = settings && settings[fieldKey] !== undefined ? settings[fieldKey] : defaults[fieldKey];
+                if (nextValue !== undefined) {
+                    input.value = nextValue;
+                }
+                updateValueLabel(groupKey, fieldKey, parseFloat(input.value));
+            });
+            enforceGroupConstraints(groupKey);
+        }
+
+        function updateValueLabel(groupKey, fieldKey, value) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom || !dom.valueLabels[fieldKey]) {
+                return;
+            }
+            const field = dom.fieldMeta[fieldKey];
+            dom.valueLabels[fieldKey].textContent = formatFieldValue(value, field);
+        }
+
+        function formatFieldValue(value, field) {
+            if (field && typeof field.format === 'function') {
+                return field.format(value);
+            }
+            if (typeof value === 'number' && value % 1 !== 0) {
+                return value.toFixed(2);
+            }
+            return `${value}`;
+        }
+
+        function enforceGroupConstraints(groupKey) {
+            const dom = advancedDomMap[groupKey];
+            if (!dom) {
+                return;
+            }
+            if (groupKey === 'canonOverlay' || groupKey === 'eternalOverlay') {
+                const minInput = dom.inputs.minOffsetBeats;
+                const maxInput = dom.inputs.maxOffsetBeats;
+                if (minInput && maxInput) {
+                    const minValue = parseInt(minInput.value, 10) || 1;
+                    const minForMax = Math.max(minValue + 1, parseInt(maxInput.min, 10) || minValue + 1);
+                    maxInput.min = minForMax;
+                    let maxValue = parseInt(maxInput.value, 10) || minForMax;
+                    if (maxValue <= minValue) {
+                        maxValue = minForMax;
+                        maxInput.value = String(maxValue);
+                        if (typeof window.updateAdvancedGroupSetting === 'function') {
+                            window.updateAdvancedGroupSetting(groupKey, 'maxOffsetBeats', maxValue);
+                        }
+                    }
+                    updateValueLabel(groupKey, 'maxOffsetBeats', parseFloat(maxInput.value));
+                }
+            } else if (groupKey === 'jukeboxLoop' || groupKey === 'eternalLoop') {
+                const minLoopInput = dom.inputs.minLoopBeats;
+                const maxSeqInput = dom.inputs.maxSequentialBeats;
+                if (minLoopInput && maxSeqInput) {
+                    const minLoop = parseInt(minLoopInput.value, 10) || 4;
+                    const minSeq = Math.max(minLoop + 2, parseInt(maxSeqInput.min, 10) || (minLoop + 2));
+                    maxSeqInput.min = minSeq;
+                    let maxSeq = parseInt(maxSeqInput.value, 10) || minSeq;
+                    if (maxSeq <= minLoop) {
+                        maxSeq = minSeq;
+                        maxSeqInput.value = String(maxSeq);
+                        if (typeof window.updateAdvancedGroupSetting === 'function') {
+                            window.updateAdvancedGroupSetting(groupKey, 'maxSequentialBeats', maxSeq);
+                        }
+                    }
+                    updateValueLabel(groupKey, 'maxSequentialBeats', parseFloat(maxSeqInput.value));
+                }
+            }
+        }
+
+        function syncAdvancedSectionsForMode(modeKey) {
+            pendingAdvancedMode = modeKey;
+            if (!advancedUiReady) {
+                return;
+            }
+            const allowed = MODE_TO_SECTION_IDS[modeKey] || [];
+            const selection = allowed.length ? allowed : ADVANCED_SECTION_LAYOUT.map((section) => section.id);
+            const allowedSet = new Set(selection);
+            ADVANCED_SECTION_LAYOUT.forEach((section) => {
+                const node = advancedSectionNodes[section.id];
+                if (node) {
+                    node.classList.toggle('hidden', !allowedSet.has(section.id));
+                }
+            });
+            primeGroupLayoutForMode(modeKey);
+        }
+
+        window.onCanonModeChanged = (enabled) => {
+            if (!advancedSidebarVisible) {
+                return;
+            }
+            updateGroupToggleState('canonOverlay', enabled);
+            syncGroupFromState('canonOverlay');
+            if (enabled) {
+                setGroupCollapsed('canonOverlay', false);
+            }
+        };
+
+        setAdvancedVisibility(false);
+        if (advancedToggleButton) {
+            advancedToggleButton.addEventListener('click', () => {
+                setAdvancedVisibility(!advancedSidebarVisible);
+            });
+        }
+
+
+
+        // helper to clear params when browser back/forward is used
+        window.addEventListener('popstate', () => {
+            if (backButton) { backButton.classList.add('hidden'); }
+            const params = new URLSearchParams(window.location.search);
+            if (!params.has('trid')) {
+                setState('state-home');
+                if (driver && typeof driver.stop === "function") {
+                    driver.stop();
+                }
+            }
+        });
+
+        // Queue management
+        const clearQueueBtn = document.getElementById('clear-queue-btn');
+        if (clearQueueBtn) {
+            clearQueueBtn.addEventListener('click', function() {
+                if (typeof window.clearQueue === 'function') {
+                    window.clearQueue();
+                }
+            });
+        }
+
+        // Custom file upload button
+        const fileUploadButton = document.getElementById('file-upload-button');
+        const fileInput = document.getElementById('audio-file-input');
+        const fileName = document.getElementById('file-upload-name');
+
+        if (fileUploadButton && fileInput && fileName) {
+            fileUploadButton.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files.length > 0) {
+                    fileName.textContent = fileInput.files[0].name;
+                } else {
+                    fileName.textContent = 'No file chosen';
+                }
+            });
+        }
+    })();
+    </script>
+</body>
+</html>
+

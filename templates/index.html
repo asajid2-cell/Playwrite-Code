@@ -49,7 +49,13 @@
                     <div class="source-pane" id="upload-pane">
                         <label class="field">
                             <span>Audio file</span>
-                            <input type="file" name="audio" accept="audio/*">
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="audio" accept="audio/*" id="audio-file-input" class="file-input-hidden">
+                                <button type="button" class="file-upload-button" id="file-upload-button">
+                                    Choose File
+                                </button>
+                                <span class="file-upload-name" id="file-upload-name">No file chosen</span>
+                            </div>
                         </label>
                     </div>
 
@@ -74,16 +80,12 @@
                     <button type="submit" class="cta">Transform Track</button>
                 </form>
                 <div id="form-status" class="status-panel" role="status" aria-live="polite"></div>
-                <div class="tips">
-                    <p>Requires <code>ffmpeg</code> for YouTube imports.</p>
-                </div>
             </section>
 
             <section class="panel viz-panel music-frame" id="viz-panel">
                 <header class="viz-header">
                     <div class="viz-headline">
-                        <h2>Visualizer</h2>
-                        <p id="info"></p>
+                        <h2 id="info"></h2>
                     </div>
                     <div class="viz-actions">
                         <button id="play" class="viz-button">Play</button>
@@ -110,33 +112,96 @@
                         <button type="button" id="advanced-toggle" class="viz-button ghost advanced-toggle-button" aria-pressed="false">
                             Advanced: Off
                         </button>
+                        <button type="button" id="add-to-queue-btn" class="viz-button ghost">
+                            + Add to Queue
+                        </button>
                     </div>
-                </header>
-                <div class="viz-body">
-                    <div class="viz-stage">
-                        <div class="viz-status" id="status-panel"></div>
-                        <div id="error"></div>
-                        <div id="tiles" class="tiles-canvas"></div>
-                        <footer class="viz-footer">
-                            Press space to toggle playback - drag the window to reposition
-                        </footer>
-                    </div>
-                    <aside class="viz-sidebar hidden" id="advanced-sidebar">
-                        <div class="advanced-shell" id="advanced-shell">
-                            <header class="advanced-header">
-                                <h3>Advanced Settings</h3>
-                                <p>Fine-tune how each engine behaves. Changes apply immediately.</p>
-                            </header>
-                            <div class="advanced-sections" id="advanced-sections"></div>
+            </header>
+            <div class="viz-body">
+                <div class="viz-stage">
+                    <div class="viz-status" id="status-panel"></div>
+                    <div id="error"></div>
+                    <div id="tiles" class="tiles-canvas"></div>
+                    <div id="queue-container" class="queue-container" style="display: none;">
+                        <div class="queue-header">
+                            <h4>Queue</h4>
+                            <button type="button" id="clear-queue-btn" class="viz-button ghost small">Clear All</button>
                         </div>
-                    </aside>
-                </div>
-            </section>
-        </main>
+                        <div id="queue-list" class="queue-list"></div>
+                    </div>
 
-        <footer class="footer">
-            © Harmonizer Lab
-        </footer>
+                    <!-- Footer with random text -->
+                    <footer class="viz-footer" id="footer-text">
+                        drive safe i fucking love you &lt;3
+                    </footer>
+                </div>
+
+                <aside class="viz-sidebar hidden" id="advanced-sidebar">
+                    <div class="advanced-shell" id="advanced-shell">
+                        <header class="advanced-header">
+                            <h3>Advanced Settings</h3>
+                            <p>Fine-tune how each engine behaves. Changes apply immediately.</p>
+                        </header>
+                        <div class="advanced-sections" id="advanced-sections"></div>
+                    </div>
+                </aside>
+            </div>
+            </section>
+            </main>
+            </div>
+
+            <!-- ✅ Script to randomize the footer message -->
+            <script>
+                const messages = [
+                    "drive safe i fucking love you <3",
+                    "text me when you get home <3",
+                    "made for you, by you <3",
+                    "you’re doing amazing, keep going <3",
+                    "i’m proud of you, always <3",
+                    " i do bad all by myself :p",
+                    " you are enough, just as you are <3",
+                    "every day is all there is <3",
+                    "ill wait for you tomorrow <3",
+                    "she said do u love me i tell her only partly :p",
+                    "i cant keep my hands to myself :p",
+                    "you make me wanna die less :p",
+                    " stay hydrated <3",
+                    " to your eternity <3",
+                    " believe in miracles <3",
+                    " you are my sunshine <3",
+                    "u make my day less grey :o",
+                    "passionate from miles away :o",
+                    "were just some soul with good intentions :p",
+                    "who do you think you are? i am :b",
+                    "im sure we're taller in another dimension <3",
+
+                ];
+
+                // Pick a random message
+                const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+
+                // Replace the footer text
+                document.getElementById("footer-text").innerHTML = randomMessage;
+            </script>
+
+
+    <!-- Add to Queue Modal -->
+    <div id="queue-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add to Queue</h3>
+                <button type="button" class="modal-close" id="queue-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Enter a YouTube URL or playlist to add to the queue:</p>
+                <input type="text" id="queue-url-input" class="queue-input" placeholder="https://youtube.com/watch?v=..." />
+                <div id="queue-modal-status" class="queue-modal-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="viz-button ghost" id="queue-modal-cancel">Cancel</button>
+                <button type="button" class="viz-button" id="queue-modal-submit">Add to Queue</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
@@ -243,6 +308,29 @@
                     statusPanel.textContent = 'Please paste a YouTube link.';
                     return;
                 }
+
+                // Check if it's a playlist URL
+                const url = urlField.value.trim();
+                if (url.includes('list=') || url.includes('playlist')) {
+                    try {
+                        statusPanel.textContent = 'Checking for playlist...';
+                        const playlistResponse = await fetch('/api/playlist-info', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: url })
+                        });
+                        const playlistData = await playlistResponse.json();
+
+                        if (playlistData.is_playlist && playlistData.entries && playlistData.entries.length > 0) {
+                            statusPanel.textContent = `Found playlist with ${playlistData.entries.length} tracks. Processing all...`;
+                            await processPlaylist(playlistData.entries, form);
+                            return;
+                        }
+                    } catch (err) {
+                        console.error('Playlist check failed:', err);
+                        // Continue with single track processing
+                    }
+                }
             }
 
             const submitButton = form.querySelector('button[type="submit"]');
@@ -269,6 +357,59 @@
                 submitButton.textContent = 'Transform Track';
             }
         });
+
+        async function processPlaylist(entries, form) {
+            const submitButton = form.querySelector('button[type="submit"]');
+            const algorithm = form.querySelector('input[name="algorithm"]:checked').value;
+            submitButton.disabled = true;
+
+            const trackIds = [];
+            const trackInfo = [];
+
+            for (let i = 0; i < entries.length; i++) {
+                try {
+                    statusPanel.textContent = `Processing track ${i + 1}/${entries.length}: ${entries[i].title}`;
+
+                    const formData = new FormData();
+                    formData.append('source', 'youtube');
+                    formData.append('youtube_url', entries[i].url);
+                    formData.append('algorithm', algorithm);
+
+                    const response = await fetch('/api/process', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const payload = await response.json();
+                    if (response.ok && payload.trackId) {
+                        trackIds.push(payload.trackId);
+                        trackInfo.push({
+                            id: payload.trackId,
+                            title: entries[i].title,
+                            artist: 'YouTube'
+                        });
+                    } else {
+                        console.error(`Failed to process ${entries[i].title}:`, payload.error);
+                    }
+                } catch (err) {
+                    console.error(`Error processing ${entries[i].title}:`, err);
+                }
+            }
+
+            if (trackIds.length > 0) {
+                // Store queue in sessionStorage to load in visualizer
+                sessionStorage.setItem('playlistQueue', JSON.stringify(trackInfo));
+                statusPanel.textContent = `Successfully processed ${trackIds.length} tracks! Loading visualizer...`;
+
+                // Navigate to first track with the queue
+                const mode = algorithm || 'canon';
+                window.location.href = `/?trid=${trackIds[0]}&mode=${mode}`;
+            } else {
+                statusPanel.textContent = 'Failed to process any tracks from the playlist.';
+                submitButton.disabled = false;
+                submitButton.textContent = 'Transform Track';
+            }
+        }
 
         const advancedToggleButton = document.getElementById('advanced-toggle');
         const advancedSidebar = document.getElementById('advanced-sidebar');
@@ -634,6 +775,21 @@
             });
         }
 
+        function resetAllGroupsToDefaults() {
+            if (!advancedUiReady) {
+                return;
+            }
+            console.log('[Advanced Settings] Resetting all groups to defaults');
+            Object.keys(ADVANCED_GROUP_METADATA).forEach((groupKey) => {
+                if (typeof window.resetAdvancedGroup === 'function') {
+                    window.resetAdvancedGroup(groupKey);
+                }
+                if (typeof window.applyAdvancedGroup === 'function') {
+                    window.applyAdvancedGroup(groupKey, { source: 'reset' });
+                }
+            });
+        }
+
         function setAdvancedVisibility(enabled) {
             const normalized = !!enabled;
             if (normalized === advancedSidebarVisible) {
@@ -650,6 +806,7 @@
                 showAdvancedSidebar();
                 window.setAdvancedPanelMode(currentModeKey);
             } else if (advancedSidebar) {
+                resetAllGroupsToDefaults();
                 disableAllAdvancedGroups();
                 advancedSidebar.classList.add('hidden');
                 advancedSidebar.setAttribute('aria-hidden', 'true');
@@ -1026,6 +1183,35 @@
                 }
             }
         });
+
+        // Queue management
+        const clearQueueBtn = document.getElementById('clear-queue-btn');
+        if (clearQueueBtn) {
+            clearQueueBtn.addEventListener('click', function() {
+                if (typeof window.clearQueue === 'function') {
+                    window.clearQueue();
+                }
+            });
+        }
+
+        // Custom file upload button
+        const fileUploadButton = document.getElementById('file-upload-button');
+        const fileInput = document.getElementById('audio-file-input');
+        const fileName = document.getElementById('file-upload-name');
+
+        if (fileUploadButton && fileInput && fileName) {
+            fileUploadButton.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function() {
+                if (fileInput.files.length > 0) {
+                    fileName.textContent = fileInput.files[0].name;
+                } else {
+                    fileName.textContent = 'No file chosen';
+                }
+            });
+        }
     })();
     </script>
 </body>

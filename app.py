@@ -108,42 +108,108 @@ def media(filename: str):
     return response
 
 
+def _get_youtube_playlist_info(url: str) -> Optional[dict]:
+    """Extract playlist information without downloading."""
+    if YoutubeDL is None:
+        raise RuntimeError("yt-dlp is not installed. Run `pip install yt-dlp`.")
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,  # Don't download, just get metadata
+    }
+
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        if info and info.get("_type") == "playlist":
+            return {
+                "is_playlist": True,
+                "title": info.get("title"),
+                "entries": [
+                    {
+                        "url": f"https://www.youtube.com/watch?v={entry.get('id')}",
+                        "title": entry.get("title"),
+                        "duration": entry.get("duration"),
+                    }
+                    for entry in info.get("entries", [])
+                    if entry and entry.get("id")
+                ]
+            }
+        return {"is_playlist": False}
+
+
 def _download_youtube(url: str, track_id: str) -> tuple[Path, Optional[dict]]:
     if YoutubeDL is None:
         raise RuntimeError("yt-dlp is not installed. Run `pip install yt-dlp`.")
 
-    output_template = str(UPLOAD_FOLDER / f"{track_id}.%(ext)s")
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": output_template,
-        "quiet": True,
-        "no_warnings": True,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-    }
     ffmpeg_dir = locate_ffmpeg_bin()
     if ffmpeg_dir is None:
         raise RuntimeError(
             "FFmpeg binaries not found. Install FFmpeg or set FFMPEG_LOCATION to the bin directory."
         )
-    ydl_opts["ffmpeg_location"] = str(ffmpeg_dir)
 
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        # ffmpeg postprocessor converts to mp3
-        filename = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
-    if not filename.exists():
-        # fallback to any file matching track id
-        candidates = list(UPLOAD_FOLDER.glob(f"{track_id}.*"))
-        if not candidates:
-            raise RuntimeError("Unable to locate downloaded audio.")
-        filename = candidates[0]
-    return filename, info
+    output_template = str(UPLOAD_FOLDER / f"{track_id}.%(ext)s")
+
+    # Try IPv4 and IPv6
+    retry_configs = [
+        # First attempt: Force IPv4
+        {
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "source_address": "0.0.0.0",  # Force IPv4
+        },
+        # Second attempt: Force IPv6
+        {
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "source_address": "::",  # Force IPv6
+        },
+    ]
+
+    for attempt, base_opts in enumerate(retry_configs, 1):
+        try:
+            ydl_opts = base_opts.copy()
+            ydl_opts["ffmpeg_location"] = str(ffmpeg_dir)
+            ydl_opts["postprocessors"] = [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ]
+
+            print(f"[YouTube Download] Attempt {attempt}/{len(retry_configs)}")
+
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = Path(ydl.prepare_filename(info)).with_suffix(".mp3")
+
+            if not filename.exists():
+                # Fallback to any file matching track id
+                candidates = list(UPLOAD_FOLDER.glob(f"{track_id}.*"))
+                if candidates:
+                    filename = candidates[0]
+                else:
+                    raise RuntimeError("Unable to locate downloaded audio.")
+
+            print(f"[YouTube Download] Success on attempt {attempt}")
+            return filename, info
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[YouTube Download] Attempt {attempt} failed: {error_msg}")
+
+            # If this isn't the last attempt, continue to next config
+            if attempt < len(retry_configs):
+                continue
+            # If this was the last attempt, raise the error
+            raise RuntimeError(f"Failed to download video. YouTube may be blocking requests. Please try again now or wait a few minutes and retry.")
 
 
 @app.route("/api/process", methods=["POST"])
@@ -210,6 +276,22 @@ def api_process():
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 500
     except Exception as exc:  # pragma: no cover
+        return jsonify({"error": f"Unexpected error: {exc}"}), 500
+
+
+@app.route("/api/playlist-info", methods=["POST"])
+def api_playlist_info():
+    """Check if URL is a playlist and return track list."""
+    url = request.json.get("url", "").strip() if request.json else ""
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    try:
+        info = _get_youtube_playlist_info(url)
+        return jsonify(info)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except Exception as exc:
         return jsonify({"error": f"Unexpected error: {exc}"}), 500
 
 

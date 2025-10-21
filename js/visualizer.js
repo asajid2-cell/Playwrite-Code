@@ -43,6 +43,11 @@ var isTrackReady = false;
 var serverLoopCandidateMap = {};
 var canonLoopCandidates = [];
 var loopPaths = [];
+
+// Queue management
+var trackQueue = [];
+var currentQueueIndex = -1;
+var autoPlayNext = false;
 var ADVANCED_DEFAULTS = {
     canonOverlay: {
         minOffsetBeats: 8,
@@ -1013,7 +1018,17 @@ if (typeof window !== "undefined") {
         if (group === "jukeboxLoop" && mode === "jukebox") {
             recomputeLoopGraphForMode("jukebox");
         } else if (group === "eternalLoop" && mode === "eternal") {
+            // When disabling eternal loop, clear paths and redraw with defaults
+            if (!enabled) {
+                clearLoopPaths();
+            }
             recomputeLoopGraphForMode("eternal");
+            // Force a visualization refresh to apply default settings
+            if (!enabled) {
+                setTimeout(function() {
+                    refreshJukeboxVisualization();
+                }, 50);
+            }
         }
     };
     window.isAdvancedGroupEnabled = isAdvancedGroupEnabled;
@@ -1056,7 +1071,13 @@ if (typeof window !== "undefined") {
         } else if (group === "jukeboxLoop" && mode === "jukebox") {
             recomputeLoopGraphForMode("jukebox");
         } else if (group === "eternalLoop" && mode === "eternal") {
+            // For eternal mode, we need to clear and redraw both overlays and loops
+            clearLoopPaths();
             recomputeLoopGraphForMode("eternal");
+            // Force redraw with default settings
+            setTimeout(function() {
+                refreshJukeboxVisualization();
+            }, 50);
         }
         console.log('[resetAdvancedGroup] Reset complete, new settings:', advancedSettings[group]);
         return snapshot;
@@ -1439,6 +1460,17 @@ function setEternalAdvancedEnabled(enabled) {
     eternalAdvancedEnabled = normalized;
     setAdvancedGroupEnabledFlag("eternalOverlay", normalized);
     if (mode === "eternal" && masterQs && masterQs.length) {
+        // When disabling, clear the overlay paths before regenerating
+        if (!normalized && paper && masterQs) {
+            _.each(masterQs, function(q) {
+                if (q && q.ppath && typeof q.ppath.remove === "function") {
+                    q.ppath.remove();
+                }
+                if (q) {
+                    q.ppath = null;
+                }
+            });
+        }
         regenerateEternalOverlay({ reason: "toggle" });
     }
 }
@@ -1907,6 +1939,10 @@ function init() {
         var initialTrid = processParams();
         remixer = createJRemixer(context, $);
         driver = Driver(remixer.getPlayer());
+
+        // Load playlist queue from sessionStorage if available
+        loadPlaylistQueue();
+
         if (initialTrid) {
             fetchAnalysis(initialTrid);
         } else {
@@ -1915,12 +1951,268 @@ function init() {
     }
 }
 
+function loadPlaylistQueue() {
+    try {
+        var queueData = sessionStorage.getItem('playlistQueue');
+        if (queueData) {
+            var tracks = JSON.parse(queueData);
+            console.log('[Queue] Loading playlist from sessionStorage:', tracks.length, 'tracks');
+
+            tracks.forEach(function(track) {
+                addToQueue(track.id, track.title, track.artist);
+            });
+
+            // Find current track and set queue index
+            if (curTrack && curTrack.id) {
+                for (var i = 0; i < trackQueue.length; i++) {
+                    if (trackQueue[i].id === curTrack.id) {
+                        currentQueueIndex = i;
+                        break;
+                    }
+                }
+            } else if (trackQueue.length > 0) {
+                currentQueueIndex = 0;
+            }
+
+            // Enable auto-play for playlists
+            autoPlayNext = true;
+            updateQueueUI();
+
+            // Clear from sessionStorage after loading
+            sessionStorage.removeItem('playlistQueue');
+        }
+    } catch (e) {
+        console.error('[Queue] Failed to load playlist:', e);
+    }
+}
+
 
 function showPlotPage(trid) {
-    var url = location.protocol + "//" + 
+    var url = location.protocol + "//" +
                 location.host + location.pathname + "?trid=" + trid;
     location.href = url;
 }
+
+// Queue Management Functions
+function addToQueue(trackId, title, artist) {
+    trackQueue.push({
+        id: trackId,
+        title: title || "Unknown Track",
+        artist: artist || "Unknown Artist"
+    });
+    updateQueueUI();
+    console.log('[Queue] Added track:', title, '| Queue length:', trackQueue.length);
+}
+
+function playNextInQueue() {
+    if (currentQueueIndex + 1 < trackQueue.length) {
+        currentQueueIndex++;
+        var nextTrack = trackQueue[currentQueueIndex];
+        console.log('[Queue] Playing next:', nextTrack.title, '| Index:', currentQueueIndex);
+        loadTrack(nextTrack.id);
+        updateQueueUI();
+        return true;
+    }
+    console.log('[Queue] No more tracks in queue');
+    return false;
+}
+
+function playPreviousInQueue() {
+    if (currentQueueIndex > 0) {
+        currentQueueIndex--;
+        var prevTrack = trackQueue[currentQueueIndex];
+        console.log('[Queue] Playing previous:', prevTrack.title, '| Index:', currentQueueIndex);
+        loadTrack(prevTrack.id);
+        updateQueueUI();
+        return true;
+    }
+    return false;
+}
+
+function removeFromQueue(index) {
+    if (index >= 0 && index < trackQueue.length) {
+        var removed = trackQueue.splice(index, 1)[0];
+        if (index < currentQueueIndex) {
+            currentQueueIndex--;
+        } else if (index === currentQueueIndex) {
+            // Removed currently playing track
+            currentQueueIndex = -1;
+        }
+        updateQueueUI();
+        console.log('[Queue] Removed track:', removed.title);
+    }
+}
+
+function clearQueue() {
+    trackQueue = [];
+    currentQueueIndex = -1;
+    updateQueueUI();
+    console.log('[Queue] Cleared');
+}
+
+function updateQueueUI() {
+    var queueContainer = $("#queue-container");
+    var queueList = $("#queue-list");
+
+    if (!queueContainer.length || !queueList.length) {
+        return;
+    }
+
+    if (trackQueue.length === 0) {
+        queueContainer.hide();
+        return;
+    }
+
+    queueContainer.show();
+    queueList.empty();
+
+    trackQueue.forEach(function(track, index) {
+        var item = $("<div>").addClass("queue-item");
+        if (index === currentQueueIndex) {
+            item.addClass("playing");
+        }
+
+        var info = $("<div>").addClass("queue-item-info");
+        info.append($("<div>").addClass("queue-item-title").text(track.title));
+        info.append($("<div>").addClass("queue-item-artist").text(track.artist));
+
+        var actions = $("<div>").addClass("queue-item-actions");
+        var playBtn = $("<button>").addClass("queue-btn").text(index === currentQueueIndex ? "♪" : "▶");
+        playBtn.click(function() {
+            currentQueueIndex = index;
+            loadTrack(track.id);
+            updateQueueUI();
+        });
+
+        var removeBtn = $("<button>").addClass("queue-btn queue-btn-remove").text("×");
+        removeBtn.click(function() {
+            removeFromQueue(index);
+        });
+
+        actions.append(playBtn);
+        actions.append(removeBtn);
+
+        item.append(info);
+        item.append(actions);
+        queueList.append(item);
+    });
+}
+
+window.addToQueue = addToQueue;
+window.playNextInQueue = playNextInQueue;
+window.playPreviousInQueue = playPreviousInQueue;
+window.clearQueue = clearQueue;
+
+// Queue modal handling
+$(document).ready(function() {
+    var queueModal = $("#queue-modal");
+    var queueUrlInput = $("#queue-url-input");
+    var queueModalStatus = $("#queue-modal-status");
+
+    // Add to queue button handler
+    $("#add-to-queue-btn").click(function() {
+        queueModal.show();
+        queueUrlInput.val("").focus();
+        queueModalStatus.removeClass("visible error success info").text("");
+    });
+
+    // Close modal handlers
+    $("#queue-modal-close, #queue-modal-cancel").click(function() {
+        queueModal.hide();
+    });
+
+    // Click outside modal to close
+    queueModal.click(function(e) {
+        if (e.target === queueModal[0]) {
+            queueModal.hide();
+        }
+    });
+
+    // Submit handler
+    $("#queue-modal-submit").click(async function() {
+        var url = queueUrlInput.val().trim();
+        if (!url) {
+            queueModalStatus.addClass("visible error").text("Please enter a URL");
+            return;
+        }
+
+        queueModalStatus.addClass("visible info").removeClass("error success").text("Processing...");
+
+        try {
+            // Check if it's a playlist
+            var playlistResponse = await fetch('/api/playlist-info', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url })
+            });
+
+            var playlistData = await playlistResponse.json();
+
+            if (playlistData.is_playlist && playlistData.entries && playlistData.entries.length > 0) {
+                // Process playlist
+                queueModalStatus.text(`Found playlist with ${playlistData.entries.length} tracks. Processing...`);
+
+                for (var i = 0; i < playlistData.entries.length; i++) {
+                    var entry = playlistData.entries[i];
+                    queueModalStatus.text(`Processing ${i + 1}/${playlistData.entries.length}: ${entry.title}`);
+
+                    var formData = new FormData();
+                    formData.append('url', entry.url);
+                    formData.append('mode', mode);
+
+                    var response = await fetch('/api/process', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    var data = await response.json();
+                    if (data.trackId) {
+                        addToQueue(data.trackId, entry.title, 'YouTube');
+                    }
+                }
+
+                queueModalStatus.addClass("success").removeClass("info").text(`Added ${playlistData.entries.length} tracks to queue!`);
+                setTimeout(function() { queueModal.hide(); }, 1500);
+            } else {
+                // Process single track
+                queueModalStatus.text("Processing track...");
+
+                var formData = new FormData();
+                formData.append('url', url);
+                formData.append('mode', mode);
+
+                var response = await fetch('/api/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                var data = await response.json();
+                if (data.trackId) {
+                    addToQueue(data.trackId, data.title || 'YouTube Track', data.artist || 'YouTube');
+                    queueModalStatus.addClass("success").removeClass("info").text("Track added to queue!");
+                    setTimeout(function() { queueModal.hide(); }, 1500);
+                } else {
+                    queueModalStatus.addClass("error").removeClass("info").text("Failed to process track");
+                }
+            }
+        } catch (error) {
+            console.error('Queue modal error:', error);
+            queueModalStatus.addClass("error").removeClass("info success").text("Error: " + error.message);
+        }
+    });
+
+    // Clear queue button handler
+    $("#clear-queue-btn").click(function() {
+        clearQueue();
+    });
+
+    // Enter key to submit
+    queueUrlInput.keypress(function(e) {
+        if (e.which === 13) {
+            $("#queue-modal-submit").click();
+        }
+    });
+});
 
 function setURL() {
     if (curTrack) {
@@ -2502,6 +2794,11 @@ function createCanonDriver(player) {
 
     function process() {
         if (curQ >= masterQs.length) {
+            // Check if we should auto-play the next track in queue
+            if (autoPlayNext && playNextInQueue()) {
+                console.log('[Canon Driver] Auto-playing next track in queue');
+                return;
+            }
             stop();
         } else if (running) {
             var nextQ = masterQs[curQ];

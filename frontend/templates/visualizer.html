@@ -20,7 +20,6 @@
                 <button id="play" class="viz-button">Play</button>
                 <span class="viz-timer" id="mtime">00:00:00</span>
             </div>
-            <span class="viz-mode-pill" id="mode-pill">Autocanonizer</span>
         </div>
         <div id="status-panel" class="viz-status"></div>
         <div id="error"></div>
@@ -37,21 +36,5 @@
     <script src="../js/raphael-min.js"></script>
     <script src="../jremix.js"></script>
     <script src="../js/visualizer.js"></script>
-    <script>
-        (function updateModePill() {
-            const params = new URLSearchParams(window.location.search);
-            const pill = document.getElementById('mode-pill');
-            if (!pill) {
-                return;
-            }
-            const mapping = {
-                canon: 'Autocanonizer',
-                jukebox: 'Eternal Jukebox',
-                eternal: 'Eternal Canonizer'
-            };
-            const normalized = (params.get('mode') || 'canon').toLowerCase();
-            pill.textContent = mapping[normalized] || mapping.canon;
-        }());
-    </script>
 </body>
 </html>

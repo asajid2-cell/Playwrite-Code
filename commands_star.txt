@@ -486,14 +486,14 @@ sudo docker compose logs -f appuser
 
 Relaunch Script:
 
-'EOF'
+'EOF
 set -euo pipefail
 cd /home/harmonizer/apps/harmonizer
 
 echo "[0/4] Resetting repo"
-git fetch origin prod
-git checkout prod
-git reset --hard origin/prod
+git fetch origin static
+git checkout static
+git reset --hard origin/static
 git clean -fd
 
 echo "[1/4] Repo status"
@@ -508,4 +508,6 @@ sudo docker image prune -f >/dev/null
 
 echo "[4/4] Tail latest logs (Ctrl+C when done)"
 sudo docker compose logs -f harmonizer
-EOF
+EOF'
+
+

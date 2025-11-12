@@ -511,3 +511,7 @@ sudo docker compose logs -f harmonizer
 EOF'
 
 
+#nano .env
+#Input apikey = 
+#CtrO + Enter + CtrX
+

@@ -1,35 +1,39 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useEffect } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { DashboardHeader } from './components/DashboardHeader';
+import { Workspace } from './components/Workspace';
+import { useWorkspaceStore, useCurrentDashboard } from './state/useWorkspaceStore';
+import './index.css';
 
-function App() {
-  const [count, setCount] = useState(0)
+export function App() {
+  const dashboard = useCurrentDashboard();
+  const dashboards = useWorkspaceStore((s) => s.dashboards);
+  const selectDashboard = useWorkspaceStore((s) => s.selectDashboard);
+
+  useEffect(() => {
+    if (!dashboard && dashboards.length > 0) {
+      selectDashboard(dashboards[0].id);
+    }
+  }, [dashboard, dashboards, selectDashboard]);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <div className="app-shell">
+      <Sidebar />
+      <main className="main-area">
+        {dashboard ? (
+          <>
+            <DashboardHeader dashboard={dashboard} />
+            <Workspace dashboard={dashboard} />
+          </>
+        ) : (
+          <div className="empty-state">
+            <h2>No dashboards yet</h2>
+            <p>Create a dashboard from the sidebar to get started.</p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;

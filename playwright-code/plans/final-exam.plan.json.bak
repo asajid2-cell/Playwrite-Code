@@ -1,0 +1,13 @@
+{
+  "name": "Custom analytics smoke test",
+  "description": "Load final exam dist build, add a widget, toggle notes formatting, capture screenshot.",
+  "startUrl": "",
+  "steps": [
+    { "id": "nav", "kind": "navigate", "url": "" },
+    { "id": "wait-toolbar", "kind": "waitFor", "options": { "text": "Add widget" } },
+    { "id": "add-chart", "kind": "click", "selector": "button:nth-of-type(2)" },
+    { "id": "wait-widget", "kind": "waitFor", "options": { "text": "Metric overview" } },
+    { "id": "snapshot", "kind": "snapshot", "options": { "label": "final-exam", "includeDom": true } },
+    { "id": "screenshot", "kind": "screenshot", "options": { "label": "final-exam" } }
+  ]
+}

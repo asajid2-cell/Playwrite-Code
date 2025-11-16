@@ -155,11 +155,18 @@ textarea:focus-visible {
   gap: 1rem;
 }
 
+.simple-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
 .widget-card {
   background: #161a24;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  height: 100%;
+  min-height: 300px;
   display: flex;
   flex-direction: column;
 }

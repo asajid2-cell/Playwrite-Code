@@ -3,7 +3,14 @@ import type { TableWidget } from '../../../types';
 import { generateTableRows } from '../../../utils/data';
 import { useWorkspaceStore } from '../../../state/useWorkspaceStore';
 
-const masterRows = generateTableRows(750);
+// Lazy initialization - only generate once when first needed
+let masterRows: ReturnType<typeof generateTableRows> | null = null;
+const getMasterRows = () => {
+  if (!masterRows) {
+    masterRows = generateTableRows(750);
+  }
+  return masterRows;
+};
 
 interface Props {
   widget: TableWidget;
@@ -15,13 +22,15 @@ export function TableWidgetView({ widget }: Props) {
 
   const filtered = useMemo(() => {
     const keyword = filter.toLowerCase();
-    const rows = masterRows.filter(
+    const allRows = getMasterRows();
+    const rows = allRows.filter(
       (row) =>
         row.name.toLowerCase().includes(keyword) ||
         row.event.toLowerCase().includes(keyword) ||
         row.city.toLowerCase().includes(keyword),
     );
-    return rows.sort((a, b) => {
+    // Create a copy before sorting to avoid mutation
+    return [...rows].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortBy === 'value') {
         return (a.value - b.value) * dir;

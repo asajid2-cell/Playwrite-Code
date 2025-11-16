@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Analytics Workspace</title>
+    <style>
+        :root {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #0f1115;
+            color: #0f1115;
+            line-height: 1.5;
+            font-weight: 400;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #0e1117;
+            color: #e5e7eb;
+        }
+
+        button {
+            border: none;
+            background: #1f2933;
+            color: inherit;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        button.primary {
+            background: #2563eb;
+        }
+
+        button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button:focus-visible, input:focus-visible, textarea:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+
+        .app-shell {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            background: #131620;
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .sidebar-header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .dashboard-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .dashboard-list li {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .dashboard-item {
+            flex: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: transparent;
+            border: 1px solid transparent;
+            padding: 0.75rem;
+            border-radius: 10px;
+            text-align: left;
+        }
+
+        .dashboard-item.active {
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(59, 130, 246, 0.08);
+        }
+
+        .dashboard-item strong {
+            display: block;
+        }
+
+        .dashboard-item small {
+            display: block;
+            color: #94a3b8;
+            font-size: 0.8rem;
+        }
+
+        .icon-button {
+            background: transparent;
+            padding: 0.25rem 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .main-area {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .dash-header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .dash-title {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .title-input {
+            font-size: 1.75rem;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            color: inherit;
+            font-family: inherit;
+        }
+
+        .save-status {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .save-status.error {
+            color: #f87171;
+        }
+
+        .link-button {
+            background: none;
+            color: #60a5fa;
+            padding: 0;
+            text-decoration: underline;
+        }
+
+        .workspace-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .workspace-toolbar > div {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .layout {
+            position: relative;
+            min-height: 400px;
+        }
+
+        .widget-wrapper {
+            position: absolute;
+            background: #161a24;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: move;
+            transition: box-shadow 0.2s;
+        }
+
+        .widget-wrapper:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .widget-wrapper.dragging {
+            opacity: 0.5;
+            z-index: 1000;
+        }
+
+        .widget-card {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .widget-title-input {
+            background: transparent;
+            border: none;
+            color: inherit;
+            font-weight: 600;
+            width: 70%;
+            font-family: inherit;
+        }
+
+        .widget-actions {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .widget-body {
+            padding: 0.5rem;
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .chart-widget, .table-widget, .notes-widget {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chart-svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .table-controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .table-controls input {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .table-sorts {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .table-head, .table-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            padding: 0.4rem;
+        }
+
+        .table-head {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .table-row:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .table-body {
+            max-height: 320px;
+            overflow: auto;
+        }
+
+        .table-pagination {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            padding-top: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .notes-toolbar {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .notes-toolbar button {
+            font-weight: bold;
+        }
+
+        .notes-editor {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 12px;
+            padding: 0.75rem;
+            min-height: calc(100% - 40px);
+            overflow: auto;
+            outline: none;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .modal {
+            background: #111827;
+            border-radius: 12px;
+            padding: 1rem;
+            width: min(420px, 90vw);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        label {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.85rem;
+            gap: 0.25rem;
+        }
+
+        input, select, textarea {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 0.5rem;
+            color: inherit;
+            font-family: inherit;
+        }
+
+        .empty-state, .empty-area {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            border: 1px dashed rgba(255, 255, 255, 0.07);
+        }
+
+        .muted {
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 900px) {
+            .app-shell {
+                grid-template-columns: 220px 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+            .sidebar {
+                position: sticky;
+                top: 0;
+                z-index: 5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Workspaces</h1>
+                <button class="primary" onclick="app.createDashboard()">+ New dashboard</button>
+            </div>
+            <ul id="dashboard-list" class="dashboard-list"></ul>
+        </aside>
+        <main id="main-area" class="main-area"></main>
+    </div>
+
+    <script>
+        // Utility functions
+        function randomId() {
+            return 'id-' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        }
+
+        function generateSeries(metric, range) {
+            const metricSeeds = { users: 1200, revenue: 45000, sessions: 3200 };
+            const rangeDays = { '7d': 7, '30d': 30, '90d': 90 };
+            const days = rangeDays[range];
+            const base = metricSeeds[metric];
+            const now = new Date();
+            const points = [];
+
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(now.getDate() - i);
+                const noise = Math.sin(i / 3) * 0.1 + Math.random() * 0.05;
+                const value = Math.round(base * (1 + noise));
+                points.push({
+                    date: d.toISOString().slice(0, 10),
+                    value
+                });
+            }
+            return points;
+        }
+
+        function generateTableRows(count = 750) {
+            const events = ['Signup', 'Purchase', 'Logout', 'Upgrade', 'Churn', 'Invite'];
+            const cities = ['Seattle', 'London', 'Berlin', 'NYC', 'Paris', 'Tokyo', 'Sydney'];
+            const rows = [];
+            for (let i = 0; i < count; i++) {
+                rows.push({
+                    id: `row-${i}`,
+                    name: `User ${i + 1}`,
+                    event: events[i % events.length],
+                    value: Math.floor(Math.random() * 1000),
+                    city: cities[i % cities.length]
+                });
+            }
+            return rows;
+        }
+
+        const TABLE_ROWS = generateTableRows(750);
+
+        // Application state
+        const app = {
+            dashboards: [],
+            currentDashboardId: null,
+            saveStatus: 'idle',
+            saveTimer: null,
+            dragging: null,
+            dragOffset: { x: 0, y: 0 },
+
+            init() {
+                this.loadState();
+                if (this.dashboards.length === 0) {
+                    this.dashboards = this.buildDefaultDashboards();
+                }
+                if (!this.currentDashboardId && this.dashboards.length > 0) {
+                    this.currentDashboardId = this.dashboards[0].id;
+                }
+                this.render();
+            },
+
+            buildDefaultDashboards() {
+                return [
+                    {
+                        id: randomId(),
+                        name: 'Product Pulse',
+                        updatedAt: new Date().toISOString(),
+                        widgets: [
+                            {
+                                id: randomId(), type: 'chart', title: 'Metric overview',
+                                x: 0, y: 0, w: 400, h: 300,
+                                config: { metric: 'users', range: '30d', mode: 'line' }
+                            },
+                            {
+                                id: randomId(), type: 'table', title: 'Events table',
+                                x: 420, y: 0, w: 600, h: 400,
+                                config: { filter: '', sortBy: 'name', sortDir: 'asc', page: 0, pageSize: 25 }
+                            },
+                            {
+                                id: randomId(), type: 'notes', title: 'Notes',
+                                x: 0, y: 320, w: 380, h: 300,
+                                config: { content: 'Capture insights, action items, and runbooks here.' }
+                            }
+                        ]
+                    },
+                    {
+                        id: randomId(),
+                        name: 'Marketing Overview',
+                        updatedAt: new Date().toISOString(),
+                        widgets: [
+                            {
+                                id: randomId(), type: 'chart', title: 'Revenue trends',
+                                x: 0, y: 0, w: 500, h: 300,
+                                config: { metric: 'revenue', range: '90d', mode: 'bar' }
+                            },
+                            {
+                                id: randomId(), type: 'notes', title: 'Campaign notes',
+                                x: 520, y: 0, w: 400, h: 250,
+                                config: { content: 'Track campaign performance here.' }
+                            }
+                        ]
+                    }
+                ];
+            },
+
+            loadState() {
+                try {
+                    const saved = localStorage.getItem('custom-analytics-workspace');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        this.dashboards = data.dashboards || [];
+                        this.currentDashboardId = data.currentDashboardId;
+                    }
+                } catch (e) {
+                    console.error('Failed to load state:', e);
+                }
+            },
+
+            saveState() {
+                if (this.saveTimer) clearTimeout(this.saveTimer);
+                this.saveStatus = 'saving';
+                this.render();
+
+                this.saveTimer = setTimeout(() => {
+                    try {
+                        const fail = Math.random() < 0.1;
+                        if (fail) {
+                            this.saveStatus = 'error';
+                            this.render();
+                            return;
+                        }
+
+                        localStorage.setItem('custom-analytics-workspace', JSON.stringify({
+                            dashboards: this.dashboards,
+                            currentDashboardId: this.currentDashboardId
+                        }));
+
+                        const currentDash = this.getCurrentDashboard();
+                        if (currentDash) {
+                            currentDash.updatedAt = new Date().toISOString();
+                        }
+
+                        this.saveStatus = 'saved';
+                        this.render();
+                    } catch (e) {
+                        console.error('Save failed:', e);
+                        this.saveStatus = 'error';
+                        this.render();
+                    }
+                }, 800 + Math.random() * 300);
+            },
+
+            getCurrentDashboard() {
+                return this.dashboards.find(d => d.id === this.currentDashboardId);
+            },
+
+            createDashboard() {
+                const newDash = {
+                    id: randomId(),
+                    name: 'Untitled dashboard',
+                    updatedAt: new Date().toISOString(),
+                    widgets: []
+                };
+                this.dashboards.push(newDash);
+                this.currentDashboardId = newDash.id;
+                this.saveState();
+                this.render();
+            },
+
+            selectDashboard(id) {
+                this.currentDashboardId = id;
+                this.render();
+            },
+
+            deleteDashboard(id) {
+                const dash = this.dashboards.find(d => d.id === id);
+                if (!dash) return;
+                if (!confirm(`Delete dashboard "${dash.name}"?`)) return;
+
+                this.dashboards = this.dashboards.filter(d => d.id !== id);
+                if (this.currentDashboardId === id) {
+                    this.currentDashboardId = this.dashboards[0]?.id || null;
+                }
+                this.saveState();
+                this.render();
+            },
+
+            renameDashboard(name) {
+                const dash = this.getCurrentDashboard();
+                if (dash && name.trim()) {
+                    dash.name = name.trim();
+                    this.saveState();
+                    this.render();
+                }
+            },
+
+            addWidget(type) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+
+                const nextY = dash.widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0);
+                let widget;
+
+                if (type === 'chart') {
+                    widget = {
+                        id: randomId(), type: 'chart', title: 'Metric overview',
+                        x: 0, y: nextY, w: 400, h: 300,
+                        config: { metric: 'users', range: '30d', mode: 'line' }
+                    };
+                } else if (type === 'table') {
+                    widget = {
+                        id: randomId(), type: 'table', title: 'Events table',
+                        x: 0, y: nextY, w: 600, h: 400,
+                        config: { filter: '', sortBy: 'name', sortDir: 'asc', page: 0, pageSize: 25 }
+                    };
+                } else if (type === 'notes') {
+                    widget = {
+                        id: randomId(), type: 'notes', title: 'Notes',
+                        x: 0, y: nextY, w: 380, h: 300,
+                        config: { content: 'Capture insights here.' }
+                    };
+                }
+
+                dash.widgets.push(widget);
+                this.saveState();
+                this.render();
+            },
+
+            deleteWidget(widgetId) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (!widget) return;
+                if (!confirm(`Delete widget "${widget.title}"?`)) return;
+
+                dash.widgets = dash.widgets.filter(w => w.id !== widgetId);
+                this.saveState();
+                this.render();
+            },
+
+            updateWidgetTitle(widgetId, title) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (widget) {
+                    widget.title = title;
+                    this.saveState();
+                }
+            },
+
+            updateWidgetConfig(widgetId, updates) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (widget) {
+                    widget.config = { ...widget.config, ...updates };
+                    this.saveState();
+                    this.render();
+                }
+            },
+
+            openWidgetSettings(widgetId) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (!widget) return;
+
+                this.renderModal(widget);
+            },
+
+            startDrag(widgetId, e) {
+                const dash = this.getCurrentDashboard();
+                if (!dash) return;
+
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (!widget) return;
+
+                const wrapper = document.querySelector(`[data-widget-id="${widgetId}"]`);
+                const rect = wrapper.getBoundingClientRect();
+
+                this.dragging = {
+                    widgetId,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    initialX: widget.x,
+                    initialY: widget.y
+                };
+
+                wrapper.classList.add('dragging');
+                document.addEventListener('mousemove', this.onDrag);
+                document.addEventListener('mouseup', this.endDrag);
+            },
+
+            onDrag(e) {
+                if (!app.dragging) return;
+
+                const dash = app.getCurrentDashboard();
+                const widget = dash.widgets.find(w => w.id === app.dragging.widgetId);
+                if (!widget) return;
+
+                const dx = e.clientX - app.dragging.startX;
+                const dy = e.clientY - app.dragging.startY;
+
+                widget.x = Math.max(0, app.dragging.initialX + dx);
+                widget.y = Math.max(0, app.dragging.initialY + dy);
+
+                app.renderWorkspace();
+            },
+
+            endDrag(e) {
+                if (!app.dragging) return;
+
+                const wrapper = document.querySelector(`[data-widget-id="${app.dragging.widgetId}"]`);
+                if (wrapper) {
+                    wrapper.classList.remove('dragging');
+                }
+
+                app.dragging = null;
+                document.removeEventListener('mousemove', app.onDrag);
+                document.removeEventListener('mouseup', app.endDrag);
+
+                app.saveState();
+            },
+
+            render() {
+                this.renderSidebar();
+                this.renderMain();
+            },
+
+            renderSidebar() {
+                const list = document.getElementById('dashboard-list');
+                list.innerHTML = this.dashboards.map(dash => `
+                    <li>
+                        <button class="dashboard-item ${dash.id === this.currentDashboardId ? 'active' : ''}"
+                                onclick="app.selectDashboard('${dash.id}')">
+                            <div>
+                                <strong>${this.escapeHtml(dash.name)}</strong>
+                                <small>Updated ${new Date(dash.updatedAt).toLocaleString()}</small>
+                            </div>
+                        </button>
+                        <button class="icon-button" onclick="app.deleteDashboard('${dash.id}')">&times;</button>
+                    </li>
+                `).join('');
+            },
+
+            renderMain() {
+                const main = document.getElementById('main-area');
+                const dash = this.getCurrentDashboard();
+
+                if (!dash) {
+                    main.innerHTML = `
+                        <div class="empty-state">
+                            <h2>No dashboards yet</h2>
+                            <p>Create a dashboard from the sidebar to get started.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const statusText = this.saveStatus === 'saving' ? 'Saving…' :
+                                   this.saveStatus === 'saved' ? 'Saved' :
+                                   this.saveStatus === 'error' ? 'Save failed' : '';
+
+                main.innerHTML = `
+                    <header class="dash-header">
+                        <div class="dash-title">
+                            <input type="text" class="title-input" value="${this.escapeHtml(dash.name)}"
+                                   onblur="app.renameDashboard(this.value)">
+                            <div class="save-status ${this.saveStatus}">
+                                ${statusText}
+                                ${this.saveStatus === 'error' ? '<button class="link-button" onclick="app.saveState()">Retry</button>' : ''}
+                            </div>
+                        </div>
+                        <div class="dash-meta">
+                            <span>Last saved ${new Date(dash.updatedAt).toLocaleString()}</span>
+                        </div>
+                    </header>
+                    <section class="workspace">
+                        <div class="workspace-toolbar">
+                            <div>
+                                <span>Add widget:</span>
+                                <button onclick="app.addWidget('chart')">Chart</button>
+                                <button onclick="app.addWidget('table')">Table</button>
+                                <button onclick="app.addWidget('notes')">Notes</button>
+                            </div>
+                            <p class="muted">Drag widgets to reposition them.</p>
+                        </div>
+                        <div id="workspace-layout" class="layout"></div>
+                    </section>
+                `;
+
+                this.renderWorkspace();
+            },
+
+            renderWorkspace() {
+                const dash = this.getCurrentDashboard();
+                const layout = document.getElementById('workspace-layout');
+                if (!layout || !dash) return;
+
+                if (dash.widgets.length === 0) {
+                    layout.innerHTML = `
+                        <div class="empty-area">
+                            <p>No widgets yet. Use the buttons above to add your first widget.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                layout.innerHTML = dash.widgets.map(widget => {
+                    const widgetContent = this.renderWidget(widget);
+                    return `
+                        <div class="widget-wrapper" data-widget-id="${widget.id}"
+                             style="left: ${widget.x}px; top: ${widget.y}px; width: ${widget.w}px; height: ${widget.h}px;">
+                            <div class="widget-card">
+                                <div class="widget-header" onmousedown="app.startDrag('${widget.id}', event)">
+                                    <input type="text" class="widget-title-input" value="${this.escapeHtml(widget.title)}"
+                                           onchange="app.updateWidgetTitle('${widget.id}', this.value)"
+                                           onclick="event.stopPropagation()">
+                                    <div class="widget-actions">
+                                        <button class="icon-button" onclick="app.openWidgetSettings('${widget.id}')">⚙</button>
+                                        <button class="icon-button" onclick="app.deleteWidget('${widget.id}')">🗑</button>
+                                    </div>
+                                </div>
+                                <div class="widget-body" id="widget-body-${widget.id}">
+                                    ${widgetContent}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Attach event listeners for interactive widgets
+                dash.widgets.forEach(widget => {
+                    if (widget.type === 'notes') {
+                        this.attachNotesHandlers(widget);
+                    }
+                });
+            },
+
+            renderWidget(widget) {
+                if (widget.type === 'chart') {
+                    return this.renderChart(widget);
+                } else if (widget.type === 'table') {
+                    return this.renderTable(widget);
+                } else if (widget.type === 'notes') {
+                    return this.renderNotes(widget);
+                }
+                return '<div>Unknown widget</div>';
+            },
+
+            renderChart(widget) {
+                const data = generateSeries(widget.config.metric, widget.config.range);
+                const maxValue = Math.max(...data.map(d => d.value));
+                const height = 200;
+                const width = widget.w - 40;
+                const padding = 40;
+
+                if (widget.config.mode === 'line') {
+                    const points = data.map((d, i) => {
+                        const x = padding + (i / (data.length - 1)) * (width - padding * 2);
+                        const y = height - padding - ((d.value / maxValue) * (height - padding * 2));
+                        return `${x},${y}`;
+                    }).join(' ');
+
+                    return `
+                        <div class="chart-widget">
+                            <svg class="chart-svg" viewBox="0 0 ${width} ${height}">
+                                <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#444" stroke-width="1"/>
+                                <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#444" stroke-width="1"/>
+                                <polyline points="${points}" fill="none" stroke="#8884d8" stroke-width="2"/>
+                                ${data.map((d, i) => {
+                                    const x = padding + (i / (data.length - 1)) * (width - padding * 2);
+                                    const y = height - padding - ((d.value / maxValue) * (height - padding * 2));
+                                    return `<circle cx="${x}" cy="${y}" r="3" fill="#8884d8"/>`;
+                                }).join('')}
+                            </svg>
+                        </div>
+                    `;
+                } else {
+                    const barWidth = (width - padding * 2) / data.length - 2;
+                    return `
+                        <div class="chart-widget">
+                            <svg class="chart-svg" viewBox="0 0 ${width} ${height}">
+                                <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#444" stroke-width="1"/>
+                                <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#444" stroke-width="1"/>
+                                ${data.map((d, i) => {
+                                    const x = padding + i * (barWidth + 2);
+                                    const barHeight = (d.value / maxValue) * (height - padding * 2);
+                                    const y = height - padding - barHeight;
+                                    return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="#10b981"/>`;
+                                }).join('')}
+                            </svg>
+                        </div>
+                    `;
+                }
+            },
+
+            renderTable(widget) {
+                const { filter, sortBy, sortDir, page, pageSize } = widget.config;
+                const keyword = filter.toLowerCase();
+
+                let filtered = TABLE_ROWS.filter(row =>
+                    row.name.toLowerCase().includes(keyword) ||
+                    row.event.toLowerCase().includes(keyword) ||
+                    row.city.toLowerCase().includes(keyword)
+                );
+
+                filtered.sort((a, b) => {
+                    const dir = sortDir === 'asc' ? 1 : -1;
+                    if (sortBy === 'value') {
+                        return (a.value - b.value) * dir;
+                    }
+                    return a[sortBy].localeCompare(b[sortBy]) * dir;
+                });
+
+                const totalPages = Math.ceil(filtered.length / pageSize);
+                const currentPage = Math.min(page, totalPages - 1);
+                const pagedRows = filtered.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+
+                return `
+                    <div class="table-widget">
+                        <div class="table-controls">
+                            <input type="text" value="${this.escapeHtml(filter)}" placeholder="Search users or events"
+                                   oninput="app.updateWidgetConfig('${widget.id}', { filter: this.value, page: 0 })">
+                            <div class="table-sorts">
+                                <button onclick="app.toggleSort('${widget.id}', 'name')">Name</button>
+                                <button onclick="app.toggleSort('${widget.id}', 'event')">Event</button>
+                                <button onclick="app.toggleSort('${widget.id}', 'value')">Value</button>
+                            </div>
+                        </div>
+                        <div class="table-head">
+                            <span>Name</span>
+                            <span>Event</span>
+                            <span>City</span>
+                            <span>Value</span>
+                        </div>
+                        <div class="table-body">
+                            ${pagedRows.map(row => `
+                                <div class="table-row">
+                                    <span>${this.escapeHtml(row.name)}</span>
+                                    <span>${this.escapeHtml(row.event)}</span>
+                                    <span>${this.escapeHtml(row.city)}</span>
+                                    <span>${row.value}</span>
+                                </div>
+                            `).join('')}
+                            ${pagedRows.length === 0 ? '<p class="muted">No matching records.</p>' : ''}
+                        </div>
+                        <div class="table-pagination">
+                            <button ${currentPage === 0 ? 'disabled' : ''}
+                                    onclick="app.updateWidgetConfig('${widget.id}', { page: ${Math.max(0, currentPage - 1)} })">Prev</button>
+                            <span>Page ${currentPage + 1} / ${Math.max(totalPages, 1)}</span>
+                            <button ${currentPage >= totalPages - 1 ? 'disabled' : ''}
+                                    onclick="app.updateWidgetConfig('${widget.id}', { page: ${Math.min(totalPages - 1, currentPage + 1)} })">Next</button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            toggleSort(widgetId, column) {
+                const dash = this.getCurrentDashboard();
+                const widget = dash.widgets.find(w => w.id === widgetId);
+                if (!widget) return;
+
+                const nextDir = widget.config.sortBy === column && widget.config.sortDir === 'asc' ? 'desc' : 'asc';
+                this.updateWidgetConfig(widgetId, { sortBy: column, sortDir: nextDir, page: 0 });
+            },
+
+            renderNotes(widget) {
+                return `
+                    <div class="notes-widget">
+                        <div class="notes-toolbar">
+                            <button onclick="document.execCommand('bold', false)">B</button>
+                            <button onclick="document.execCommand('italic', false)">I</button>
+                            <button onclick="document.execCommand('insertUnorderedList', false)">•</button>
+                        </div>
+                        <div class="notes-editor" contenteditable="true" id="notes-editor-${widget.id}">
+                            ${widget.config.content}
+                        </div>
+                    </div>
+                `;
+            },
+
+            attachNotesHandlers(widget) {
+                setTimeout(() => {
+                    const editor = document.getElementById(`notes-editor-${widget.id}`);
+                    if (editor) {
+                        editor.addEventListener('input', () => {
+                            this.updateWidgetConfig(widget.id, { content: editor.innerHTML });
+                        });
+                    }
+                }, 0);
+            },
+
+            renderModal(widget) {
+                const backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop';
+                backdrop.innerHTML = `
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h2>Widget Settings</h2>
+                            <button class="icon-button" onclick="this.closest('.modal-backdrop').remove()">&times;</button>
+                        </div>
+                        <div class="modal-body">
+                            ${this.renderModalContent(widget)}
+                        </div>
+                        <div class="modal-footer">
+                            <button onclick="this.closest('.modal-backdrop').remove()">Close</button>
+                        </div>
+                    </div>
+                `;
+                backdrop.addEventListener('click', (e) => {
+                    if (e.target === backdrop) backdrop.remove();
+                });
+                document.body.appendChild(backdrop);
+            },
+
+            renderModalContent(widget) {
+                if (widget.type === 'chart') {
+                    return `
+                        <label>
+                            Metric
+                            <select onchange="app.updateWidgetConfig('${widget.id}', { metric: this.value })">
+                                <option value="users" ${widget.config.metric === 'users' ? 'selected' : ''}>Users</option>
+                                <option value="revenue" ${widget.config.metric === 'revenue' ? 'selected' : ''}>Revenue</option>
+                                <option value="sessions" ${widget.config.metric === 'sessions' ? 'selected' : ''}>Sessions</option>
+                            </select>
+                        </label>
+                        <label>
+                            Range
+                            <select onchange="app.updateWidgetConfig('${widget.id}', { range: this.value })">
+                                <option value="7d" ${widget.config.range === '7d' ? 'selected' : ''}>7 days</option>
+                                <option value="30d" ${widget.config.range === '30d' ? 'selected' : ''}>30 days</option>
+                                <option value="90d" ${widget.config.range === '90d' ? 'selected' : ''}>90 days</option>
+                            </select>
+                        </label>
+                        <label>
+                            Chart type
+                            <select onchange="app.updateWidgetConfig('${widget.id}', { mode: this.value })">
+                                <option value="line" ${widget.config.mode === 'line' ? 'selected' : ''}>Line</option>
+                                <option value="bar" ${widget.config.mode === 'bar' ? 'selected' : ''}>Bar</option>
+                            </select>
+                        </label>
+                    `;
+                } else if (widget.type === 'table') {
+                    return `
+                        <label>
+                            Page size
+                            <input type="number" value="${widget.config.pageSize}" min="10" max="100"
+                                   onchange="app.updateWidgetConfig('${widget.id}', { pageSize: parseInt(this.value), page: 0 })">
+                        </label>
+                    `;
+                }
+                return '<p>No settings available for this widget type.</p>';
+            },
+
+            escapeHtml(str) {
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+        };
+
+        // Initialize app
+        app.init();
+    </script>
+</body>
+</html>

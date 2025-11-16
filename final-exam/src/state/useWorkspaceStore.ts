@@ -100,17 +100,25 @@ const buildDefaultDashboards = (): Dashboard[] => [
   },
 ];
 
+const sanitizeDashboards = (dashboards: Dashboard[]): Dashboard[] =>
+  dashboards.map((dash) => ({
+    ...dash,
+    widgets: dash.widgets.map((widget, index) => {
+      const safe = { ...widget };
+      if (!Number.isFinite(safe.x)) safe.x = 0;
+      if (!Number.isFinite(safe.y)) safe.y = index * 2;
+      if (!Number.isFinite(safe.w) || safe.w <= 0) safe.w = 4;
+      if (!Number.isFinite(safe.h) || safe.h <= 0) safe.h = 4;
+      return safe;
+    }),
+  }));
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 const triggerSave = (set: any, get: any) => {
   if (saveTimer) clearTimeout(saveTimer);
   set({ saveStatus: 'saving', saveError: undefined });
   saveTimer = setTimeout(() => {
-    const fail = Math.random() < 0.1;
-    if (fail) {
-      set({ saveStatus: 'error', saveError: 'Failed to sync. Retry?' });
-      return;
-    }
     const now = new Date().toISOString();
     const currentId = get().currentDashboardId;
     if (!currentId) {
@@ -124,13 +132,13 @@ const triggerSave = (set: any, get: any) => {
       saveStatus: 'saved',
       saveError: undefined,
     }));
-  }, 800 + Math.random() * 300);
+  }, 500);
 };
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set, get) => ({
-      dashboards: buildDefaultDashboards(),
+      dashboards: sanitizeDashboards(buildDefaultDashboards()),
       currentDashboardId: undefined,
       saveStatus: 'idle',
       saveError: undefined,
@@ -172,10 +180,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       addWidget: (type) => {
         const currentId = get().currentDashboardId;
         if (!currentId) return;
+        const current = get().dashboards.find((d) => d.id === currentId);
+        const nextY =
+          current?.widgets.reduce((max, w) => Math.max(max, w.y + w.h), 0) ?? 0;
         const builderMap: Record<WidgetType, () => Widget> = {
-          chart: () => createChart({ x: 0, y: Infinity }),
-          table: () => createTable({ x: 0, y: Infinity }),
-          notes: () => createNotes({ x: 0, y: Infinity }),
+          chart: () => createChart({ x: 0, y: nextY }),
+          table: () => createTable({ x: 0, y: nextY }),
+          notes: () => createNotes({ x: 0, y: nextY }),
         };
         const widget = builderMap[type]();
         set((state) => ({
@@ -233,21 +244,26 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       updateLayout: (layout) => {
         const currentId = get().currentDashboardId;
         if (!currentId) return;
-        set((state) => ({
-          dashboards: state.dashboards.map((d) =>
-            d.id === currentId
-              ? {
-                  ...d,
-                  widgets: d.widgets.map((w) => {
-                    const entry = layout.find((l) => l.i === w.id);
-                    if (!entry) return w;
-                    return { ...w, x: entry.x, y: entry.y, w: entry.w, h: entry.h };
-                  }),
-                }
-              : d,
-          ),
-        }));
-        triggerSave(set, get);
+        let changed = false;
+        set((state) => {
+          const dashboards = state.dashboards.map((d) => {
+            if (d.id !== currentId) return d;
+            const widgets = d.widgets.map((w) => {
+              const entry = layout.find((l) => l.i === w.id);
+              if (!entry) return w;
+              if (w.x !== entry.x || w.y !== entry.y || w.w !== entry.w || w.h !== entry.h) {
+                changed = true;
+                return { ...w, x: entry.x, y: entry.y, w: entry.w, h: entry.h };
+              }
+              return w;
+            });
+            return changed ? { ...d, widgets } : d;
+          });
+          return changed ? { dashboards } : state;
+        });
+        if (changed) {
+          triggerSave(set, get);
+        }
       },
       retrySave: () => {
         triggerSave(set, get);
@@ -259,11 +275,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         dashboards: state.dashboards,
         currentDashboardId: state.currentDashboardId ?? state.dashboards[0]?.id,
       }),
-      onRehydrateStorage: () => (state) => {
-        if (!state?.currentDashboardId && state?.dashboards.length) {
-          state.currentDashboardId = state.dashboards[0].id;
-        }
-      },
     },
   ),
 );

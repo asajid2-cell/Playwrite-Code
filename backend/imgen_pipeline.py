@@ -56,7 +56,7 @@ class PromptImageGenerator:
         self.text_encoder = AutoModel.from_pretrained(
             "prajjwal1/bert-tiny",
             use_safetensors=True,
-            torch_dtype=self.dtype,
+            dtype=self.dtype,
         )
         self.text_encoder.eval()
         self.text_encoder.to(self.device, dtype=self.dtype)
